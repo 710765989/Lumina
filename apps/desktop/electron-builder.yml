@@ -1,0 +1,16 @@
+appId: com.lumina.desktop
+productName: Lumina
+electronVersion: 33.4.11
+directories:
+  output: release
+files:
+  - dist/**
+  - package.json
+asarUnpack:
+  - node_modules/better-sqlite3/**
+win:
+  target:
+    - target: dir
+      arch:
+        - x64
+npmRebuild: true

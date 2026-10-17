@@ -1,0 +1,8 @@
+{
+  "name": "@lumina/core-host",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": { "start": "tsx src/main.ts", "start:stdio": "tsx src/main.ts --stdio" },
+  "dependencies": { "@lumina/core": "workspace:*", "@lumina/storage": "workspace:*" }
+}

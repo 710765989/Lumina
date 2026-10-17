@@ -1,0 +1,7 @@
+{
+  "name": "@lumina/storage",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": { "@lumina/contracts": "workspace:*", "better-sqlite3": "^11.7.0" }
+}
