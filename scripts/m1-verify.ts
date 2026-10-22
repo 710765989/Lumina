@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { createRequire } from 'node:module';
 import {
   addMediaToAlbum,
   closeDatabase,
@@ -17,7 +18,8 @@ import { addAndScanLibraryRoot } from '@lumina/core';
 const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'lumina-m1-'));
 const mediaRoot = path.join(tempRoot, 'library');
 await mkdir(mediaRoot, { recursive: true });
-await writeFile(path.join(mediaRoot, 'sunset.jpg'), 'fixture-photo');
+const sharp=createRequire(import.meta.url)('../packages/core/node_modules/sharp');sharp.cache(false);
+await writeFile(path.join(mediaRoot, 'sunset.jpg'),await sharp({create:{width:120,height:80,channels:3,background:'#3478d4'}}).jpeg().toBuffer());
 const db = openDatabase(path.join(tempRoot, 'lumina.db'));
 try {
   const scan = await addAndScanLibraryRoot(db, mediaRoot, '示例图库');

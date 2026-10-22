@@ -1,6 +1,6 @@
 {
   "name": "@lumina/desktop",
-  "version": "0.1.0",
+  "version": "0.4.8-m2.10.12",
   "description": "光匣 Lumina 本地照片和视频管理器",
   "author": "Lumina",
   "private": true,
@@ -8,16 +8,21 @@
   "main": "dist/main.js",
   "scripts": {
     "dev": "concurrently -k \"vite --host 127.0.0.1\" \"wait-on http://127.0.0.1:5173 && electron .\"",
-    "build": "tsc -b && pnpm build:core && vite build",
+    "build": "tsc -b ../../tsconfig.json && pnpm build:core && vite build",
     "build:core": "esbuild ../core-host/src/main.ts --bundle --platform=node --format=cjs --external:better-sqlite3 --outfile=dist/core-host.cjs && esbuild src/preload.ts --bundle --platform=node --format=cjs --external:electron --outfile=dist/preload.cjs",
     "start": "electron .",
     "package:dir": "pnpm build && node ../../scripts/package-desktop.mjs",
-    "package:portable": "pnpm build && node ../../scripts/package-desktop.mjs portable"
+    "package:portable": "pnpm build && node ../../scripts/package-desktop.mjs portable",
+    "package:zip": "pnpm build && node ../../scripts/package-desktop.mjs zip",
+    "package:installer": "pnpm build && node ../../scripts/package-desktop.mjs nsis"
   },
   "dependencies": {
+    "@lumina/contracts": "workspace:*",
     "better-sqlite3": "^11.7.0",
+    "ffmpeg-static": "^5.2.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "sharp": "^0.33.5"
   },
   "devDependencies": {
     "@types/react": "^18.3.12",
@@ -25,8 +30,8 @@
     "@vitejs/plugin-react": "^4.3.4",
     "concurrently": "^9.1.0",
     "electron": "^33.2.1",
-    "esbuild": "^0.25.12",
     "electron-builder": "^25.1.8",
+    "esbuild": "^0.25.12",
     "vite": "^6.0.5",
     "wait-on": "^8.0.1"
   }

@@ -13,6 +13,7 @@ export const mediaRecordSchema = z.object({
   kind: mediaKindSchema,
   sizeBytes: z.number().int().nonnegative(),
   modifiedAtMs: z.number().nonnegative(),
+  capturedAtMs: z.number().nonnegative().nullable().optional(),
   fingerprint: z.string().min(1),
 });
 export type MediaRecord = z.infer<typeof mediaRecordSchema>;
@@ -36,3 +37,8 @@ export const errorCodes = {
 } as const;
 
 export * from './ipc.js';
+export * from './organization.js';
+export * from './search-text.js';
+export * from './tag-graph.js';
+export * from './user-error.js';
+export * from './tag-colors.js';

@@ -5,7 +5,50 @@ release-stage*/
 build-staging/
 *.tsbuildinfo
 **/data/
+!packages/core/src/data/
+!packages/core/src/data/**
 *.db
 *.db-shm
 *.db-wal
 .env*
+!.env.example
+
+# Local builds, diagnostics, editor settings and user media stay on this machine.
+cache/
+media-cache/
+thumbnails/
+previews/
+import-inbox/
+user-data/
+User Data/
+Session Storage/
+Local Storage/
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+*.log
+*.tmp
+*.dmp
+*.zip
+*.7z
+*.exe
+*.dll
+*.blockmap
+/tmp/
+/output/
+coverage/
+playwright-report/
+test-results/
+.pnpm-store/
+.codex/
+.agents/
+.workbuddy/
+.idea/
+.vs/
+.vscode/
+Thumbs.db
+Desktop.ini
+.DS_Store
+*sync-manifest.json
+source-manifest.json

@@ -1,0 +1,30 @@
+import { createRequire } from 'node:module';
+import { mkdir,readFile,writeFile,stat } from 'node:fs/promises';
+import path from 'node:path';
+import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import { launchIsolated } from './electron-test-harness.mjs';
+const require=createRequire(import.meta.url);const sharp=require('../apps/desktop/node_modules/sharp');const ffmpeg=require('../apps/desktop/node_modules/ffmpeg-static');
+const {desktop,page,qaRoot,command,errors}=await launchIsolated(process.argv[2],'m2-viewer-qa');
+try{
+ const root=path.join(qaRoot,'fixtures');await mkdir(root);
+ const photo=path.join(root,'large-6000.jpg');await sharp({create:{width:6000,height:3000,channels:3,background:'#4878bc'}}).jpeg().toFile(photo);
+ const before=await readFile(photo);
+ const movie=path.join(root,'movie.mp4');await new Promise((resolve,reject)=>{const child=spawn(ffmpeg,['-y','-hide_banner','-loglevel','error','-f','lavfi','-i','color=c=blue:s=320x180:d=5','-c:v','libx264','-pix_fmt','yuv420p',movie],{windowsHide:true});child.on('error',reject);child.on('exit',code=>code===0?resolve():reject(new Error('fixture failed')));});
+ await command({type:'roots.addAndScan',absolutePath:root});await page.getByRole('button',{name:'刷新',exact:true}).click();
+ await page.locator('.media-card').filter({hasText:'large-6000.jpg'}).dblclick();
+ await page.locator('.viewer-photo.ready').waitFor();assert.equal(await page.locator('.viewer-photo').evaluate(n=>n.naturalWidth),4096);
+ await page.getByRole('button',{name:'100%',exact:true}).click();await page.waitForFunction(()=>document.querySelector('.viewer-photo.ready')?.naturalWidth===6000);
+ assert.equal(await page.locator('.viewer-photo').evaluate(n=>Math.round(parseFloat(n.style.width))),6000);
+ assert.equal(await page.locator('.viewer-controls > span').textContent(),'100%');
+ await page.getByRole('button',{name:'旋转',exact:true}).click();assert.equal(await page.locator('.viewer-controls > span').textContent(),'100%');
+ await page.keyboard.press('Shift+Delete');const deletion=page.getByRole('dialog',{name:'从图库删除'});await deletion.waitFor();assert.equal(await deletion.locator('select').inputValue(),'permanent');
+ await page.keyboard.press('Escape');await deletion.waitFor({state:'hidden'});await page.locator('.media-viewer').waitFor();assert((await stat(photo)).isFile());
+ await page.keyboard.press('Escape');await page.locator('.media-viewer').waitFor({state:'hidden'});assert.deepEqual(await readFile(photo),before);
+ await page.locator('.media-card').filter({hasText:'movie.mp4'}).dblclick();await page.waitForFunction(()=>document.querySelector('video')?.readyState>=2);
+ await page.locator('.viewer-controls select').nth(1).selectOption('4/3');const bounds=await page.locator('video').boundingBox();assert(Math.abs(bounds.width/bounds.height-4/3)<0.01);
+ const subtitle=path.join(root,'字幕.srt');await writeFile(subtitle,'1\n00:00:00,000 --> 00:00:03,000\n测试字幕\n');
+ await desktop.evaluate(({dialog},file)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[file]})},subtitle);
+ await page.getByRole('button',{name:'加载字幕',exact:true}).click();await page.waitForFunction(()=>document.querySelector('track')?.readyState===2);
+ assert.deepEqual(errors,[]);console.log(JSON.stringify({ok:true,qaRoot,checks:['full original resolution 6000px','100% after rotation','Shift Delete confirmation only','Esc closes top modal','source photo unchanged','4:3 actual viewport','SRT subtitle loaded']}));
+}finally{await desktop.close();}

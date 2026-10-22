@@ -1,26 +1,155 @@
 # 光匣 Lumina
 
-本仓库是 Lumina 本地照片/视频管理器的开发仓库。当前完成 M0，正在实现 M1 的本地图库核心能力。
+<img src="apps/desktop/renderer/public/lumina-album-icon-256.png" width="80" alt="Lumina 相册图标">
 
-## 开发环境
+Windows 本地照片与视频管理器。把已有文件夹加入图库，通过相册、标签、时间轴和重复检测整理媒体；索引与整理信息保存在本机，不要求上传照片或注册账号。
 
-- Node.js 20+
-- pnpm 11+
-- Windows 原生依赖需要可用的 Visual Studio C++ Build Tools（better-sqlite3）
+**当前版本：M2 `.4.8.10.12` · Windows x64 · 测试版**。安装包标准版本号为 `0.4.8-m2.10.12`。M2 核心整理功能已实现，跨机器、跨应用及超大真实图库验收仍在进行。
 
-## 常用命令
+[下载版本](https://github.com/710765989/Lumina/releases) · [使用与数据说明](docs/user-guide.md) · [架构](docs/architecture.md) · [开发状态](docs/development-status.md) · [版本规划](docs/光匣Lumina-版本开发计划与待办清单.md)
 
-```text
-pnpm install
-pnpm typecheck
-pnpm test
-pnpm m0:verify
-pnpm m1:verify
-pnpm --filter @lumina/core-host start
-pnpm --filter @lumina/core-host start:stdio
-pnpm --filter @lumina/desktop build
-pnpm --filter @lumina/desktop dev
-pnpm --filter @lumina/desktop package:portable
+## 下载与启动
+
+在 Releases 中按需要选择：
+
+| 文件 | 用途 | 使用方式 |
+| --- | --- | --- |
+| `Lumina-M2-4.8.10.12-Setup-x64.exe` | Windows 安装包 | 按向导选择安装位置，通过桌面或开始菜单启动 |
+| `Lumina-M2-4.8.10.12-win-x64.zip` | 免安装运行包 | 解压到可写目录，运行 `Lumina.exe`；保留所有依赖文件 |
+| `Lumina-M2-4.8.10.12-source.zip` | 源码 | 供开发、审阅和自行构建，不能直接当作软件运行 |
+| `SHA256SUMS.txt` | 校验清单 | 核对下载文件的 SHA-256 |
+
+支持 Windows 10/11 64 位系统。安装包与 ZIP 使用相同应用代码；免安装指无需安装运行环境，**不表示所有用户数据都放在程序旁边**。日常使用不需要 Node.js、Python 或单独安装 FFmpeg。其他系统尚未提供运行包。
+
+在 PowerShell 中校验文件：
+
+```powershell
+Get-FileHash .\Lumina-M2-4.8.10.12-Setup-x64.exe -Algorithm SHA256
 ```
 
-架构说明见 [`docs/architecture.md`](docs/architecture.md)，里程碑状态见 [`docs/development-status.md`](docs/development-status.md)。
+发布包暂未进行代码签名，Windows 可能显示未知发布者。请核对下载来源与校验值。
+
+## 开始使用
+
+1. 打开「常规 → 目录设置」，添加存放照片和视频的文件夹，确认预览后建立索引。直接添加目录不会把原文件复制到软件里。
+2. 在「图库」浏览、搜索与选择媒体。右键可打开、查看详情、编辑标签、加入相册、隐藏、删除或在资源管理器中打开。
+3. 在「相册」组织普通相册与下级文件夹，或创建按标签规则自动更新的智能相册。
+4. 大量操作在后台执行，可在右上角任务入口或「常规 → 任务状态」查看进度、结果与明细。
+
+需要把外部文件复制进指定目录时，使用拖入、粘贴或导入设置。导入会确认目标路径，同名文件按提示处理。
+
+## 主要功能
+
+- **图库浏览**：默认、时间、瀑布和列表视图；缩略图大小调节、时间轴定位、分页加载、悬浮信息、照片查看器、视频播放、胶片预览及幻灯片。
+- **搜索与排序**：文件名包含/不包含，标签包含/排除/有/无，当前图库格式筛选；标签中英文名与拼音检索。按文件修改时间、拍摄时间、名称或大小排序；无拍摄时间时回退到修改时间。
+- **标签**：双语名称、固定颜色、最多五级层级、多父标签引用、批量编辑、目录递归继承标签，以及标签关联媒体隐藏规则。
+- **相册**：普通/智能相册、相册文件夹、独立封面、目录层级创建相册、智能规则预览与排除项管理。相册文件夹是整理结构，不等同于磁盘目录。
+- **重复与相似照片**：分别查看完全重复文件和视觉相似照片，左右对比，选择待删除项目；删除前确认数量和大小。相似结果用于辅助判断。
+- **文件操作**：拖出到外部软件、复制与导出、软件回收站与恢复、隐藏、可选同步 Windows 隐藏属性。永久删除不可恢复。
+- **后台任务与缓存**：任务进度和结果、支持任务的暂停/取消、缓存统计/清理/迁移、扫描去重与已有缓存复用。
+- **离线地理整理**：根据媒体已有 GPS 信息匹配附近城市，可修正地点。
+
+格式是否可播放取决于实际编码，扩展名不代表解码一定成功。AVI 等视频会使用兼容预览，首次准备可能较慢；无法处理时可调用外部播放器。无法识别的格式不作为可浏览媒体展示。WebM 按视频处理。
+
+## 常用交互
+
+| 操作 | 行为 |
+| --- | --- |
+| 单击 / 双击 | 选择媒体 / 打开媒体 |
+| `Ctrl`、`Shift` + 单击或方向键 | 多选与范围选择 |
+| 拖动空白处 | 框选；四种视图均支持 |
+| `Ctrl` + 鼠标滚轮 | 调整缩略图大小，最小时可切换列表 |
+| `F5` | 刷新当前页面数据 |
+| 鼠标侧键 | 页面后退 / 前进 |
+| 查看器中 `Enter` / `Esc` | 开关全屏 / 关闭当前查看层 |
+
+编辑模式开启时，点击空白处保留选择，框选/范围选择可反选；编辑操作成功后清空选择。关闭时，点击空白处清空选择。
+
+## 数据存在哪里
+
+| 内容 | 默认位置或查看方式 |
+| --- | --- |
+| 原照片、视频 | 你添加的磁盘目录；导入复制到你确认的目标目录 |
+| SQLite 数据库、标签、相册、任务与索引 | 当前用户应用数据目录中的 `data/lumina.db` |
+| 缩略图、图片预览、视频兼容缓存 | 新装默认程序目录下 `cache/media`；旧版优先沿用已保存路径 |
+| 缓存与数据库准确路径 | 「常规 → 缓存设置」，以软件显示的实际路径为准 |
+
+用户数据根目录由 Electron `userData` 决定，通常在 `%APPDATA%` 下；应用名称、旧版本及启动方式可能影响具体目录名。**数据库不是原文件，也不是可随意删除的缓存**：完整标签、相册和整理关系主要保存在数据库中。
+
+升级前关闭软件并备份用户数据目录和原媒体；替换运行包时不要删除它们。数据库升级前创建备份。缓存请在软件内迁移，避免只用资源管理器移动后路径不一致。卸载默认保留用户数据，卸载不等于清空图库。
+
+发行文件不包含开发者的照片、视频、数据库、个人路径配置、媒体缓存或账号凭据。原文件可能带有 EXIF/GPS 信息；对外分享前按需要使用导出脱敏选项。
+
+## 性能设置
+
+「常规」中可开关界面动画，选择连续动画或 30 FPS，设置 GIF 自动播放的文件大小和数量上限。软件明确开关优先于 Windows 动画偏好；未设置时跟随系统。
+
+大图库优先使用空间充足的固态硬盘存放缓存；机械硬盘读取、视频转码和大量 GIF 解码仍可能成为瓶颈。「不限制」GIF 大小/数量适合性能测试，较低性能机器建议设置上限。
+
+最新补丁修复了持续缩放的动画资源积累。独立测试图库中，1000 次缩放后渲染进程约 200–230 MiB；该结果用于回归比较，不代表真实图库的固定内存上限。见[验证记录](docs/m2-update-20261022.4.8.10.12.md)。
+
+## 开发环境与构建
+
+- Windows x64；推荐 Node.js 22 LTS。
+- 使用 `package.json` 指定的 pnpm，当前为 `11.25.0`。
+- 原生依赖不能使用预编译包时，需要 Python 和 Visual Studio C++ Build Tools。
+- 首次安装依赖或制作安装包需要下载 npm/Electron/NSIS 依赖。
+
+```powershell
+corepack enable
+corepack prepare pnpm@11.25.0 --activate
+pnpm install --frozen-lockfile
+pnpm typecheck
+pnpm test
+pnpm --filter @lumina/desktop dev
+```
+
+制作运行包：
+
+```powershell
+pnpm --filter @lumina/desktop package:dir
+pnpm --filter @lumina/desktop package:zip
+pnpm --filter @lumina/desktop package:installer
+```
+
+结果位于 `apps/desktop/release/`。脚本先生成渲染器、preload 和 core-host，再准备运行依赖；没有写死开发者本机路径或代理。安装器默认为当前用户安装，可选择位置，卸载默认保留应用数据。
+
+导出净化源码：
+
+```powershell
+node scripts/export-source.mjs --out ../Lumina-source
+```
+
+输出目录必须不存在。按允许清单收集源码、资源、配置、测试与文档，并验证排除项；依赖、构建产物、数据库、图库、缓存、日志和本机配置不会被复制。
+
+### 仓库结构
+
+```text
+apps/desktop/        Electron 主进程、preload、React 界面与图标
+apps/core-host/      独立后台服务入口
+packages/contracts/  跨进程协议、类型和校验
+packages/storage/    SQLite 迁移和查询
+packages/core/       扫描、缓存、相册、标签和文件操作
+scripts/             构建、源码导出、单元及隔离窗口验收
+docs/                设计、使用说明、里程碑与历史验证记录
+```
+
+`packages/core/src/data/cities.json` 是程序所需的离线城市源资源，不是用户数据库；随源码保留并提供 [GeoNames 署名说明](packages/core/src/data/LICENSE-GeoNames.md)。
+
+单元测试使用临时数据。窗口验收另需 Playwright，通过 `LUMINA_PLAYWRIGHT_PATH` 指定模块目录，`LUMINA_QA_ROOT` 指定隔离输出目录；不要把真实图库作为测试库。
+
+## 当前边界与后续计划
+
+M2 当前覆盖本地整理与浏览。跨机器验收、外部拖拽接收兼容和 10 万真实媒体压力测试仍有待完成，见 [M2 验收清单](docs/m2-acceptance.md)。
+
+- **M3**：账号、权限、Vault 加密，以及任务历史自动清理/留档和历史档案读取。
+- **M4**：局域网 Web、手机上传与分享。
+- **M5**：HDR、RAW、Live 等高级媒体处理。
+
+这些是规划，不能作为当前已有功能。当前「隐藏」用于可见性管理，**不是加密**。
+
+## 问题反馈与第三方组件
+
+反馈时请提供版本、Windows 版本、操作步骤、预期与实际结果。附日志前删除个人目录、文件名、坐标等隐私；请不要上传真实数据库、缓存和私人媒体。
+
+第三方依赖与离线数据遵循各自许可证，见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。本次整理不代替项目所有者选择源码许可证；仓库尚未新增项目级 LICENSE。

@@ -1,0 +1,45 @@
+import {createRequire} from 'node:module';
+import {mkdir,writeFile,readFile,copyFile} from 'node:fs/promises';
+import {spawn} from 'node:child_process';
+import path from 'node:path';
+import assert from 'node:assert/strict';
+import {launchIsolated} from './electron-test-harness.mjs';
+const require=createRequire(import.meta.url),target=path.resolve(process.argv[2]),packaged=target.toLowerCase().endsWith('.exe');
+let session;
+if(packaged){
+ const qaRoot=path.resolve(process.env.LUMINA_QA_ROOT||'build-staging',`m2-avi-tasks-exe-${Date.now()}`),userData=path.join(qaRoot,'user-data');await mkdir(userData,{recursive:true});
+ const {_electron:electron}=require(process.env.LUMINA_PLAYWRIGHT_PATH||'playwright'),env={...process.env,LUMINA_TEST_USER_DATA:userData};delete env.ELECTRON_RUN_AS_NODE;
+ const desktop=await electron.launch({executablePath:target,args:[],env}),page=await desktop.firstWindow(),errors=[];page.on('pageerror',error=>errors.push(error.message));await page.locator('.app-header').waitFor();session={desktop,page,qaRoot,errors,command:input=>page.evaluate(input=>window.lumina.command(input),input)};
+}else session=await launchIsolated(target,'m2-avi-tasks');
+const {desktop,page,qaRoot,command,errors}=session;page.setDefaultTimeout(20000);
+const checks=[],pass=name=>{checks.push(name);console.log('PASS '+name);},home=page.locator('.library-content'),panel=page.locator('.task-panel');
+const run=(exe,args,env)=>new Promise((resolve,reject)=>{const child=spawn(exe,args,{windowsHide:true,env:env??process.env});let error='';child.stderr.on('data',chunk=>error+=chunk);child.on('error',reject);child.on('exit',code=>code===0?resolve():reject(new Error(error||`exit ${code}`)));});
+const ffmpeg=require('../apps/desktop/node_modules/ffmpeg-static');
+async function taskFixtures(action){
+ const electron=packaged?target:path.resolve('apps/desktop/node_modules/electron/dist/electron.exe');
+ const native=packaged?path.join(path.dirname(target),'resources/app.asar/node_modules/better-sqlite3'):path.join(target,'node_modules/better-sqlite3');
+ const source=`const Database=require(process.argv[1]);const db=new Database(process.argv[2]);db.pragma('busy_timeout=5000');if(process.argv[3]==='seed'){const insert=db.prepare("INSERT INTO tasks(id,kind,status,total,processed,created_at,payload_json) VALUES(?,'tags',?,10,0,?,?)");db.transaction(()=>{for(const [status,count] of [['completed',8],['failed',6],['cancelled',1],['running',3],['queued',2],['paused',2]])for(let i=0;i<count;i++)insert.run('filter-'+status+'-'+i,status,['running','queued','paused'].includes(status)?'2020-01-01 00:00:00':'2030-01-01 00:00:00',JSON.stringify({options:{tagName:'筛选验证'}}));})();}else db.prepare("UPDATE tasks SET status='completed' WHERE id LIKE 'filter-%' AND status IN('running','queued','paused')").run();db.close();`;
+ await run(electron,['-e',source,native,path.join(qaRoot,'user-data/data/lumina.db'),action],{...process.env,ELECTRON_RUN_AS_NODE:'1'});
+}
+async function open(item){await home.locator(`[data-media-id="${item.id}"]`).dblclick();await page.waitForFunction(()=>document.querySelector('.viewer-video')?.readyState>=2,null,{timeout:60000});}
+async function close(){await page.keyboard.press('Escape');await page.locator('.media-viewer').waitFor({state:'hidden'});}
+async function videos(){return (await command({type:'tasks.page',limit:200})).items.filter(task=>task.kind==='video-preview');}
+try{
+ const fixtures=path.join(qaRoot,'fixtures');await mkdir(fixtures);
+ const aviPath=path.join(fixtures,'自动兼容.AVI');await run(ffmpeg,['-y','-hide_banner','-loglevel','error','-f','lavfi','-i','testsrc2=s=320x180:r=10:d=8','-c:v','ffv1',aviPath]);await copyFile(aviPath,path.join(fixtures,'非原生编码.mp4'));await run(ffmpeg,['-y','-hide_banner','-loglevel','error','-i',aviPath,'-c:v','libx264','-pix_fmt','yuv420p',path.join(fixtures,'原生视频.mp4')]);
+ await command({type:'roots.addAndScan',absolutePath:fixtures});await home.getByRole('button',{name:'刷新',exact:true}).click();await home.locator('.media-card').first().waitFor();const media=await command({type:'media.list'}),avi=media.find(item=>item.absolutePath.endsWith('.AVI')),native=media.find(item=>item.absolutePath.endsWith('原生视频.mp4')),unsupported=media.find(item=>item.absolutePath.endsWith('非原生编码.mp4')),before=await readFile(aviPath);
+ await open(avi);assert.match(await page.locator('.viewer-video').getAttribute('src'),/^lumina-media:\/\/playback\//);assert.equal(await page.locator('.viewer-error').count(),0);assert.equal(await page.getByRole('button',{name:'生成兼容预览',exact:true}).count(),0);
+ await page.locator('.viewer-video').evaluate(video=>{video.pause();video.currentTime=1;});await page.keyboard.press('ArrowRight');await page.waitForFunction(()=>document.querySelector('.viewer-video').currentTime>5.8);await page.locator('.viewer-controls select').first().selectOption('1.5');assert.equal(await page.locator('.viewer-video').evaluate(video=>video.playbackRate),1.5);
+ const range=await page.evaluate(async()=>{const response=await fetch(document.querySelector('.viewer-video').src,{headers:{Range:'bytes=0-99'}});return {status:response.status,bytes:(await response.arrayBuffer()).byteLength};});assert.deepEqual(range,{status:206,bytes:100});await page.screenshot({path:path.join(qaRoot,'avi-auto-playback.png')});await close();pass('AVI opens directly through automatic compatibility playback with seeking, speed and Range 206; no manual switch');
+ const previous=(await videos()).length;await open(avi);await close();assert.equal((await videos()).length,previous);assert.deepEqual(await readFile(aviPath),before);pass('reopening AVI reuses its cache and leaves the original bytes unchanged');
+ await open(native);assert.match(await page.locator('.viewer-video').getAttribute('src'),/^lumina-media:\/\/original\//);await close();assert.equal((await videos()).length,previous);pass('native MP4 still plays the original without creating a conversion task');
+ await open(unsupported);assert.match(await page.locator('.viewer-video').getAttribute('src'),/^lumina-media:\/\/playback\//);assert.equal(await page.locator('.viewer-error').count(),0);await close();assert.equal((await videos()).length,previous+1);pass('unsupported video encoding automatically falls back once regardless of its MP4 filename');
+ await taskFixtures('seed');await page.locator('.sidebar .nav-item').filter({hasText:'常规'}).click();await panel.getByRole('button',{name:'刷新任务',exact:true}).click();await panel.locator('[data-task-id^="filter-"]').first().waitFor();assert.deepEqual(await panel.locator('.task-row').evaluateAll(rows=>rows.map(row=>['running','queued','paused'].includes(row.dataset.taskStatus))),[true,true,true,true,true]);pass('older unfinished tasks appear before newer completed or failed history');
+ const filter=panel.getByLabel('任务状态筛选',{exact:true});await filter.selectOption('failed');await panel.getByText('共 6 条 · 每页 5 条',{exact:true}).waitFor();assert.equal(await panel.locator('[data-task-status=failed]').count(),5);await panel.getByRole('button',{name:'下一页',exact:true}).click();await page.waitForFunction(()=>document.querySelectorAll('.task-panel .task-row').length===1);assert.equal(await panel.locator('[data-task-status=failed]').count(),1);
+ await filter.selectOption('pending');await panel.getByText('共 7 条 · 每页 5 条',{exact:true}).waitFor();assert.equal(await panel.locator('.task-row').count(),5);await panel.getByText('1 / 2',{exact:true}).waitFor();await panel.getByRole('button',{name:'下一页',exact:true}).click();await page.waitForFunction(()=>document.querySelectorAll('.task-panel .task-row').length===2);pass('failed and pending filters apply to full history, keep five-row pagination and reset the page on changes');
+ await filter.selectOption('completed');const completed=await command({type:'tasks.page',filter:'completed',limit:5});await panel.getByText(`共 ${completed.total} 条 · 每页 5 条`,{exact:true}).waitFor();assert.equal(await panel.locator('[data-task-status=completed]').count(),5);await filter.scrollIntoViewIfNeeded();const box=await filter.boundingBox();assert(box.x+box.width<=await page.evaluate(()=>innerWidth));await page.screenshot({path:path.join(qaRoot,'task-status-filter.png')});
+ await filter.selectOption('pending');await taskFixtures('finish');await panel.getByRole('button',{name:'刷新任务',exact:true}).click();await panel.getByText('暂无待处理任务',{exact:true}).waitFor();assert.equal(await panel.locator('.task-row').count(),0);await page.waitForTimeout(800);assert.equal(await panel.getByText('暂无待处理任务',{exact:true}).count(),1);await filter.selectOption('all');await panel.getByRole('button',{name:'下一页',exact:true}).waitFor();pass('completed filtering and empty pending results stay stable; cancelled history remains accessible under all');
+ assert.deepEqual(errors,[]);const result={ok:true,qaRoot,packaged,checks,errors};await writeFile(path.join(qaRoot,'checks.json'),JSON.stringify(result,null,2));console.log(JSON.stringify(result));
+}catch(error){await page.screenshot({path:path.join(qaRoot,'failure.png')}).catch(()=>{});console.error('QA ROOT',qaRoot);throw error;}finally{await desktop.close();}
+
+

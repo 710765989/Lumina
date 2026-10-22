@@ -4,10 +4,12 @@
   "packageManager": "pnpm@11.25.0",
   "scripts": {
     "build": "tsc -b",
-    "typecheck": "tsc -b --pretty false",
+    "typecheck": "tsc -b --pretty false && pnpm typecheck:renderer",
+    "typecheck:renderer": "tsc --noEmit --jsx react-jsx --module ESNext --moduleResolution Bundler --target ES2022 --lib ES2022,DOM --strict --esModuleInterop --skipLibCheck apps/desktop/renderer/src/main.tsx apps/desktop/src/electron.d.ts",
     "test": "vitest run",
     "m0:verify": "tsx scripts/m0-verify.ts",
-    "m1:verify": "tsx scripts/m1-verify.ts"
+    "m1:verify": "tsx scripts/m1-verify.ts",
+    "m2:benchmark": "tsx scripts/m2-performance-verify.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

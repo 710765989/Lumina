@@ -1,5 +1,6 @@
 appId: com.lumina.desktop
 productName: Lumina
+artifactName: Lumina-${version}-${arch}.${ext}
 electronVersion: 33.4.11
 directories:
   output: release
@@ -8,9 +9,25 @@ files:
   - package.json
 asarUnpack:
   - node_modules/better-sqlite3/**
+  - node_modules/@img/**
+  - node_modules/sharp/**
+  - node_modules/ffmpeg-static/**
 win:
+  icon: assets/lumina-album-icon.ico
   target:
     - target: dir
       arch:
         - x64
+nsis:
+  runAfterFinish: false
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  deleteAppDataOnUninstall: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: 光匣 Lumina
+  installerLanguages:
+    - zh_CN
+    - en_US
 npmRebuild: true

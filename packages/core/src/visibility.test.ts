@@ -1,0 +1,45 @@
+import {it,expect,vi} from 'vitest';
+import {mkdtemp,mkdir,rm,readFile} from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import sharp from 'sharp';
+import {openDatabase,closeDatabase,rawMedia,refreshMediaStats,hideMedia,unhideMedia,getMediaStats,hiddenReasons} from '@lumina/storage';
+import {LibraryService} from './service.js';
+import {windowsHiddenAttribute} from './windows-hidden.js';
+async function setup(){const temp=await mkdtemp(path.join(os.tmpdir(),'lumina-visibility-')),root=path.join(temp,'photos');await mkdir(root);for(let i=0;i<3;i++)await sharp({create:{width:64,height:48,channels:3,background:'blue'}}).jpeg().toFile(path.join(root,`${i}.jpg`));const db=openDatabase(path.join(temp,'test.db')),service=new LibraryService(db,path.join(temp,'cache'));const cmd=(input:unknown):Promise<any>=>service.handle(input);await cmd({...(await cmd({type:'organization.settings'})),type:'organization.configure',watch:false});await cmd({type:'roots.addAndScan',absolutePath:root});const media=await cmd({type:'media.list'});return {temp,root,db,service,cmd,media,close:async()=>{service.close();closeDatabase(db);await rm(temp,{recursive:true,force:true,maxRetries:4,retryDelay:100});}};}
+it('unhides only confirmed tag rules across library, counts, albums, search and playback while preserving other hidden states',async()=>{
+ const t=await setup();try{const {cmd,media,db}=t,id=media[0].id,tag=await cmd({type:'tags.create',name:'隐藏父标签'}),child=await cmd({type:'tags.create',name:'子标签',parentId:tag.id}),other=await cmd({type:'tags.create',name:'另一个隐藏标签'});await cmd({type:'media.addTag',id,tagName:child.name});await cmd({type:'media.addTag',id:media[1].id,tagName:child.name});const album=await cmd({type:'smart.save',name:'隐藏规则相册',revision:(await cmd({type:'smart.preview',rule:{relation:'AND',tags:[tag.id],notTags:[],excludedMediaIds:[]}})).revision,rule:{relation:'AND',tags:[tag.id],notTags:[],excludedMediaIds:[]}});await cmd({type:'albums.setCover',id:album.id,mediaId:id});await cmd({type:'tags.setHidden',id:tag.id,hidden:true});await cmd({type:'media.hide',id});
+  const reasons=await cmd({type:'media.hiddenReasons',mediaIds:[id]});expect(reasons).toMatchObject({affected:1,byMedia:{[id]:[tag.id]},tags:[{id:tag.id,name:tag.name,count:1}]});
+  await cmd({type:'media.unhide',id});expect((await cmd({type:'hidden.list'})).some((row:any)=>row.id===id)).toBe(true);
+  await cmd({type:'media.unhide',id,tagIds:[tag.id]});expect((await cmd({type:'media.search',query:''})).some((row:any)=>row.id===id)).toBe(true);expect((await cmd({type:'media.filteredStats'})).total).toBe(2);expect((await cmd({type:'albums.media',id:album.id})).map((row:any)=>row.id)).toEqual([id]);expect((await cmd({type:'albums.cover',id:album.id})).id).toBe(id);expect(await cmd({type:'media.playlist',source:{scope:'album',id:album.id}})).toEqual([id]);expect((await cmd({type:'hidden.list'})).map((row:any)=>row.id)).toEqual([media[1].id]);expect((await cmd({type:'media.tags',id})).some((tag:any)=>tag.name===child.name)).toBe(true);
+  await cmd({type:'tags.setHidden',id:other.id,hidden:true});await cmd({type:'media.addTag',id,tagName:other.name});expect((await cmd({type:'media.list'})).some((row:any)=>row.id===id)).toBe(false);expect((await cmd({type:'media.hiddenReasons',mediaIds:[id]})).byMedia[id]).toEqual([other.id]);await cmd({type:'media.unhide',id,tagIds:[other.id]});
+  await cmd({type:'roots.setEnabled',id:(await cmd({type:'roots.list'}))[0].id,enabled:false});expect(await cmd({type:'media.list'})).toHaveLength(0);await cmd({type:'roots.setEnabled',id:(await cmd({type:'roots.list'}))[0].id,enabled:true});expect((await cmd({type:'media.list'})).some((row:any)=>row.id===id)).toBe(true);
+  await cmd({type:'media.hide',id});expect(db.prepare('SELECT 1 FROM tag_visibility_exceptions WHERE media_id=?').get(id)).toBeUndefined();await cmd({type:'media.unhide',id,tagIds:[tag.id,other.id]});await cmd({type:'tags.setHidden',id:tag.id,hidden:false});await cmd({type:'tags.setHidden',id:tag.id,hidden:true});expect(hiddenReasons(db,[id]).byMedia[id]).toContain(tag.id);
+ }finally{await t.close();}
+});
+it('manual hide/unhide performs no full-library statistics query and does not launch a Windows task when sync is off',async()=>{
+ const t=await setup();try{const {db,cmd,media}=t;refreshMediaStats(db);const before=getMediaStats(db),prepare=db.prepare.bind(db),queries:string[]=[];const spy=vi.spyOn(db,'prepare').mockImplementation(((sql:string)=>{queries.push(sql);return prepare(sql);}) as typeof db.prepare);
+  await cmd({type:'media.hide',id:media[0].id});await cmd({type:'media.unhide',id:media[0].id});spy.mockRestore();expect(queries.some(sql=>sql.includes('SUM(CASE WHEN m.kind='))).toBe(false);expect(getMediaStats(db)).toEqual(before);expect((await cmd({type:'tasks.list',limit:200})).some((task:any)=>task.kind==='visibility')).toBe(false);
+ }finally{await t.close();}
+});
+it('does not create Windows sync jobs for ordinary tag edits or obsolete queued candidates',async()=>{
+ const t=await setup();try{
+  const {cmd,db,media}=t;await cmd({...(await cmd({type:'organization.settings'})),type:'organization.configure',syncHidden:true});
+  const tag=await cmd({type:'tags.create',name:'普通标签'});await cmd({type:'media.addTag',id:media[0].id,tagName:tag.name});await cmd({type:'media.removeTag',id:media[0].id,tagName:tag.name});
+  db.prepare('INSERT OR IGNORE INTO windows_visibility_queue(media_id) SELECT id FROM media').run();await cmd({type:'organization.settings'});
+  expect(db.prepare('SELECT COUNT(*) AS n FROM windows_visibility_queue').get()).toEqual({n:0});expect((await cmd({type:'tasks.list',limit:200})).filter((task:any)=>task.kind==='visibility')).toHaveLength(0);
+ }finally{await t.close();}
+});
+it('updates tag-hidden statistics incrementally when a single media item gains or clears an exception',async()=>{
+ const t=await setup();try{const {db,cmd,media}=t,tag=await cmd({type:'tags.create',name:'计数隐藏'});await cmd({type:'media.addTag',id:media[0].id,tagName:tag.name});await cmd({type:'media.addTag',id:media[1].id,tagName:tag.name});const before=getMediaStats(db);await cmd({type:'tags.setHidden',id:tag.id,hidden:true});expect(getMediaStats(db).total).toBe(before.total-2);await cmd({type:'media.unhide',id:media[0].id,tagIds:[tag.id]});expect(getMediaStats(db).total).toBe(before.total-1);await cmd({type:'media.hide',id:media[0].id});expect(getMediaStats(db).total).toBe(before.total-2);await cmd({type:'tags.setHidden',id:tag.id,hidden:false});expect(getMediaStats(db)).toEqual(before);
+ }finally{await t.close();}
+});
+it.runIf(process.platform==='win32')('synchronizes label hiding, single-item exceptions, overlapping causes and future tagged files in background',async()=>{
+ const t=await setup();try{const {cmd,db,media}=t,id=media[0].id,file=media[0].absolutePath,bytes=await readFile(file),initial=await windowsHiddenAttribute(file);const settings=await cmd({type:'organization.settings'});await cmd({type:'organization.configure',...settings,syncHidden:true,watch:true});t.service.watcher.start();const scanCount=(await cmd({type:'tasks.list',limit:200})).filter((task:any)=>task.kind==='scan').length;const tag=await cmd({type:'tags.create',name:'Windows 隐藏标签'});await cmd({type:'media.addTag',id,tagName:tag.name});
+  async function settled(){for(let n=0;n<600;n++){const tasks=await cmd({type:'tasks.list',limit:200}),pending=(db.prepare('SELECT COUNT(*) AS n FROM windows_visibility_queue').get() as {n:number}).n;if(!pending&&!tasks.some((task:any)=>task.kind==='visibility'&&['queued','running'].includes(task.status))){expect(tasks.filter((task:any)=>task.kind==='visibility'&&task.status==='failed')).toEqual([]);return;}await new Promise(resolve=>setTimeout(resolve,15));}throw Error('OS sync timeout');}
+  const result=await cmd({type:'tags.setHidden',id:tag.id,hidden:true});expect(result.visibilityTaskId).toBeTruthy();await settled();expect((await windowsHiddenAttribute(file))&2).toBe(2);expect(rawMedia(db,id)?.metadata.windowsHiddenOriginal).toBe(Boolean(initial&2));
+  await cmd({type:'media.unhide',id});await settled();expect((await windowsHiddenAttribute(file))&2).toBe(2);await cmd({type:'media.unhide',id,tagIds:[tag.id]});await settled();expect(await windowsHiddenAttribute(file)).toBe(initial);
+  await cmd({type:'media.addTag',id:media[1].id,tagName:tag.name});await settled();expect((await windowsHiddenAttribute(media[1].absolutePath))&2).toBe(2);await cmd({type:'media.hide',id:media[1].id});await cmd({type:'tags.setHidden',id:tag.id,hidden:false});await settled();expect((await windowsHiddenAttribute(media[1].absolutePath))&2).toBe(2);await cmd({type:'media.unhide',id:media[1].id});await settled();expect((await windowsHiddenAttribute(media[1].absolutePath))&2).toBe(0);expect(await readFile(file)).toEqual(bytes);await new Promise(resolve=>setTimeout(resolve,1800));expect((await cmd({type:'tasks.list',limit:200})).filter((task:any)=>task.kind==='scan')).toHaveLength(scanCount);
+ }finally{await t.close();}
+},25000);
+
