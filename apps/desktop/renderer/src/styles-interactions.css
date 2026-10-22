@@ -334,3 +334,6 @@ button[aria-busy=true]{cursor:progress}form[aria-busy=true] button[type=submit]{
 .album-media-page>.collection-media-browser>.collection-search,
 .album-media-page>.collection-media-browser>.collection-result-summary,
 .album-media-page>.collection-media-browser>.home-view-toolbar{margin-bottom:0}
+
+.first-library-cache{display:grid;gap:8px;padding:12px 14px;border:1px solid #dce8f8;border-radius:8px;background:#f4f8ff;color:#536f95;font-size:12px}
+.first-library-cache p{font-size:11px;line-height:1.7;margin:4px 0 0;color:#8295b0}.first-library-cache>small{font-size:11px;color:#8397b4}.first-library-cache .form-error{color:#bf4b58}

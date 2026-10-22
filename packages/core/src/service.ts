@@ -171,6 +171,8 @@ export class LibraryService {
     if(String((input as any)?.type??'').startsWith('cache.')){
       const command=organizationCommandSchema.parse(input);
       if(command.type==='cache.settings')return this.cacheLocation.settings();
+      if(command.type==='cache.setupPreview')return this.cacheLocation.initialPreview(command.directory,command.libraryPath);
+      if(command.type==='cache.setup')return this.cacheLocation.configureInitial(command.directory,command.libraryPath);
       if(command.type==='cache.movePreview')return this.cacheLocation.preview(command.directory);
       if(command.type==='cache.move')return this.cacheLocation.start(command.token);
     }

@@ -13,7 +13,7 @@ const roots=['apps','packages','scripts','docs'];
 const rootFiles=['.gitignore','.gitattributes','README.md','THIRD_PARTY_NOTICES.md','package.json','pnpm-lock.yaml','pnpm-workspace.yaml','tsconfig.base.json','tsconfig.json'];
 const excluded=new Set(['node_modules','dist','release','release-verify','build-staging','data','cache','media-cache','thumbnails','previews','user-data','tmp','output','coverage','.git','.codex','.agents','.workbuddy','.vscode','.idea']);
 const codeTypes=new Set(['.ts','.tsx','.mjs','.ps1','.py','.json','.yaml','.yml','.md','.css','.html']);
-const assets=new Set(['apps/desktop/assets/lumina-album-icon.ico','apps/desktop/assets/lumina-album-icon.png','apps/desktop/renderer/public/lumina-album-icon-256.png']);
+const assets=new Set(['apps/desktop/assets/lumina-album-icon.ico','apps/desktop/assets/lumina-album-icon.png','apps/desktop/renderer/public/lumina-album-icon-256.png','docs/images/gallery-browsing.gif','docs/images/tag-search.gif']);
 const files=[];
 async function collect(relative){
  const full=path.join(root,relative),info=await lstat(full);if(info.isSymbolicLink())throw new Error(`源码中不应有符号链接：${relative}`);

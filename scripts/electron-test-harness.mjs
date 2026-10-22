@@ -16,7 +16,7 @@ export async function launchIsolated(packageRoot, label) {
   if(executable){
     const {_electron:electron}=require(process.env.LUMINA_PLAYWRIGHT_PATH||'playwright');
     const env={...process.env,LUMINA_TEST_USER_DATA:userData};delete env.ELECTRON_RUN_AS_NODE;
-    const desktop=await electron.launch({executablePath:packageRoot,env,timeout:20000});const page=await mainPage(desktop),errors=[];page.on('pageerror',error=>errors.push(error.message));await page.locator('.app-header').waitFor({timeout:20000});
+    const desktop=await electron.launch({executablePath:packageRoot,args:[`--user-data-dir=${userData}`],env,timeout:20000});const page=await mainPage(desktop),errors=[];page.on('pageerror',error=>errors.push(error.message));await page.locator('.app-header').waitFor({timeout:20000});
     if(path.resolve(await desktop.evaluate(({app})=>app.getPath('userData')))!==path.resolve(userData)){await desktop.close();throw new Error('测试 userData 隔离校验失败');}
     const command=request=>page.evaluate(input=>window.lumina.command(input),request);
     if((await command({type:'health'})).mediaCount!==0){await desktop.close();throw new Error('隔离测试库必须为空');}
@@ -32,7 +32,7 @@ Object.defineProperty(app,'isPackaged',{value:true}); require(${JSON.stringify(s
 `);
   const { _electron: electron } = require(process.env.LUMINA_PLAYWRIGHT_PATH || 'playwright');
   const env = { ...process.env,LUMINA_TEST_USER_DATA:userData }; delete env.ELECTRON_RUN_AS_NODE;
-  const desktop = await electron.launch({ executablePath: path.resolve('apps/desktop/node_modules/electron/dist/electron.exe'), args: [wrapper], env,timeout:20000 });
+  const desktop = await electron.launch({ executablePath: path.resolve('apps/desktop/node_modules/electron/dist/electron.exe'), args: [wrapper,`--user-data-dir=${userData}`], env,timeout:20000 });
   const page = await mainPage(desktop); const errors = []; page.on('pageerror', (error) => errors.push(error.message));
   await page.locator('.app-header').waitFor({timeout:20000});
   if(path.resolve(await desktop.evaluate(({app})=>app.getPath('userData')))!==path.resolve(userData) || (await page.evaluate(()=>window.lumina.command({type:'health'}))).mediaCount!==0){await desktop.close();throw new Error('测试数据目录隔离校验失败');}

@@ -21,6 +21,7 @@ export function configuredCacheRoot(db:LuminaDatabase,legacy:string|undefined,pr
  return selected;
 }
 export class CacheLocation {
+ private initializing=false;
  private plans=new Map<string,Plan>();private current?:{id:string;abort:AbortController;committed:boolean;phase:string;began?:number;copiedBytes?:number;totalBytes?:number};private gate?:Promise<void>;private unlock?:()=>void;private closed=false;
  private recovering=new Set<string>();private cleaning=new Map<string,{processed:number;total:number;currentPath:string}>();
  private owner:string;
@@ -28,19 +29,52 @@ export class CacheLocation {
   const row=db.prepare("SELECT value_json AS value FROM settings WHERE key='cache-owner'").get() as {value:string}|undefined;this.owner=row?JSON.parse(row.value):randomUUID();if(!row)db.prepare("INSERT INTO settings(key,value_json) VALUES('cache-owner',?)").run(JSON.stringify(this.owner));
   db.prepare("UPDATE tasks SET status='failed',error_message='上次迁移中断，保留原缓存位置；请重新选择目标继续迁移' WHERE kind='cache-move' AND status='paused' AND json_extract(payload_json,'$.phase')='copy'").run();
  }
- settings(){const file=(this.db.pragma('database_list') as {file:string}[])[0]?.file??'';return {directory:this.root??'',defaultDirectory:this.preferred??this.root??'',databasePath:file,moving:Boolean(this.current)||this.recovering.size>0,taskId:this.current?.id??[...this.recovering][0]??null};}
+ private confirmInitial(){this.db.prepare("INSERT OR REPLACE INTO settings(key,value_json) VALUES('cache-setup-confirmed','true')").run();}
+ private needsInitialSetup(){
+  if(this.db.prepare("SELECT 1 FROM settings WHERE key='cache-setup-confirmed'").get())return false;
+  // Legacy libraries keep their actual configured location, including when
+  // their roots are disabled or have subsequently been removed.
+  if(this.db.prepare('SELECT 1 FROM library_roots UNION ALL SELECT 1 FROM media UNION ALL SELECT 1 FROM tasks UNION ALL SELECT 1 FROM cache_inventory LIMIT 1').get()){this.confirmInitial();return false;}
+  return true;
+ }
+ settings(){const file=(this.db.pragma('database_list') as {file:string}[])[0]?.file??'';return {directory:this.root??'',defaultDirectory:this.preferred??this.root??'',databasePath:file,setupRequired:this.needsInitialSetup(),moving:this.initializing||Boolean(this.current)||this.recovering.size>0,taskId:this.current?.id??[...this.recovering][0]??null};}
+ async initialPreview(target:string,libraryPath:string){
+  if(!this.needsInitialSetup())throw new Error('缓存目录已经确认，后续请在缓存设置中更改');
+  if(!path.isAbsolute(target.trim()))throw new Error('请选择完整的缓存目录路径');target=path.resolve(target.trim());
+  if(!path.isAbsolute(libraryPath))throw new Error('请选择完整的图库目录路径');libraryPath=path.resolve(libraryPath);
+  if(inside(target,libraryPath)||inside(libraryPath,target))throw new Error('缓存目录不能放在图库目录内或包含图库目录');
+  const checked=await this.validate(target,true);
+  await mkdir(checked.target,{recursive:true});await this.validate(checked.target,true);
+  const probe=path.join(checked.target,`.lumina-write-check-${randomUUID()}`);
+  try{await writeFile(probe,'',{flag:'wx'});}catch{throw new Error('缓存目录不可写，请选择其他位置');}finally{await unlink(probe).catch(()=>{});}
+  const space=await statfs(checked.target),freeBytes=space.bavail*space.bsize;
+  if(freeBytes<=0)throw new Error('缓存磁盘空间不足，请选择其他位置');
+  return {directory:checked.target,freeBytes};
+ }
+ async configureInitial(target:string,libraryPath:string){
+  if(this.initializing||this.current||this.recovering.size)throw new Error('缓存位置正在处理，请稍后再试');
+  this.initializing=true;let frozen=false;
+  try{
+   const checked=await this.initialPreview(target,libraryPath);await this.freeze(new AbortController().signal);frozen=true;
+   if(!this.needsInitialSetup())throw new Error('图库状态已经变化，请重新打开目录设置');
+   await this.validate(checked.directory,true);
+   await writeFile(path.join(checked.directory,marker),JSON.stringify({kind:'lumina-media-cache',owner:this.owner}),{flag:'wx'}).catch(async error=>{if(error.code!=='EEXIST')throw error;const value=JSON.parse(await readFile(path.join(checked.directory,marker),'utf8'));if(value.owner!==this.owner)throw new Error('目标缓存属于其他图库');});
+   this.db.transaction(()=>{this.db.prepare("INSERT OR REPLACE INTO settings(key,value_json) VALUES('media-cache-directory',?)").run(JSON.stringify(checked.directory));this.confirmInitial();})();
+   this.root=checked.directory;this.switchRoot(checked.directory);this.notify();return {...checked,confirmed:true};
+  }finally{if(frozen)this.thaw();this.initializing=false;}
+ }
  async wait(){if(this.gate)await this.gate;}
  isActive(id:string){return this.current?.id===id||this.recovering.has(id);}
  progress(id:string){const cleanup=this.cleaning.get(id);if(cleanup)return {phase:this.recovering.has(id)?'清理上次迁移残留':'清理已迁移的旧缓存',committed:true,phaseProcessed:cleanup.processed,phaseTotal:cleanup.total,currentPath:cleanup.currentPath};if(this.recovering.has(id))return {phase:'清理上次迁移残留',committed:true};if(this.current?.id!==id)return {};const task=this.current,elapsed=task.began?(Date.now()-task.began)/1000:0,speed=elapsed>=1?(task.copiedBytes??0)/elapsed:0;return {phase:task.phase,committed:task.committed,speedBytesPerSecond:speed,remainingSeconds:speed>0?Math.ceil(((task.totalBytes??0)-(task.copiedBytes??0))/speed):null};}
- private async validate(target:string){
+ private async validate(target:string,initial=false){
   if(!path.isAbsolute(target.trim()))throw new Error('请填写完整缓存目录路径');target=path.resolve(target.trim());
-  if(this.root && (inside(this.root,target)||inside(target,this.root)))throw new Error('新旧缓存目录不能相同或互相包含');
+  if(!initial && this.root && (inside(this.root,target)||inside(target,this.root)))throw new Error('新旧缓存目录不能相同或互相包含');
   const dbFile=(this.db.pragma('database_list') as {file:string}[])[0]?.file;
   if(dbFile && inside(target,dbFile))throw new Error('缓存目录不能包含数据库或用户数据目录');
   for(const row of this.db.prepare('SELECT absolute_path AS path FROM library_roots').all() as {path:string}[])if(inside(row.path,target)||inside(target,row.path))throw new Error('缓存目录不能放在图库目录内或包含图库目录');
   let ancestor=target;
   for(let current=target;;current=path.dirname(current)){try{const info=await lstat(current);if(info.isSymbolicLink()||!info.isDirectory())throw new Error('缓存路径必须是实际文件夹，不能经过目录链接');ancestor=current;}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}if(path.dirname(current)===current)break;}
-  try{const names=await readdir(target);if(names.length){const owner=await readFile(path.join(target,marker),'utf8').then(JSON.parse).catch(()=>null);if(owner?.owner!==this.owner && path.resolve(target)!==path.resolve(this.preferred??''))throw new Error('请选择空目录，或此前属于此图库的缓存目录');}}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}
+  try{const names=await readdir(target);if(names.length){const owner=await readFile(path.join(target,marker),'utf8').then(JSON.parse).catch(()=>null);if(owner?.owner!==this.owner && (initial||path.resolve(target)!==path.resolve(this.preferred??'')))throw new Error('请选择空目录，或此前属于此图库的缓存目录');}}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}
   return {target,ancestor};
  }
  private protectedFile(file:string){return Boolean(this.db.prepare('SELECT 1 FROM media WHERE absolute_path=? COLLATE NOCASE UNION ALL SELECT 1 FROM trash_entries WHERE stored_path=? COLLATE NOCASE LIMIT 1').get(file,file));}

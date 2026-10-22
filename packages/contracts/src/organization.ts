@@ -64,6 +64,8 @@ export const organizationCommandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('trash.purge'), mediaIds: ids, destination: z.enum(['system', 'permanent']) }),
   z.object({ type: z.literal('trash.expired'), protectedIds: z.array(id).max(10000).default([]) }),
   z.object({type:z.literal('cache.settings')}),
+  z.object({type:z.literal('cache.setupPreview'),directory:z.string().min(1).max(4096),libraryPath:z.string().min(1).max(4096)}),
+  z.object({type:z.literal('cache.setup'),directory:z.string().min(1).max(4096),libraryPath:z.string().min(1).max(4096)}),
   z.object({type:z.literal('cache.movePreview'),directory:z.string().min(1).max(4096)}),
   z.object({type:z.literal('cache.move'),token:z.string().uuid()}),
   z.object({type:z.literal('imports.settings')}),
