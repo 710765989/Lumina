@@ -28,7 +28,7 @@ it('undoes only the current smart exclusion and preserves later exclusions and a
  expect(current.rule.excludedMediaIds).toEqual(['photo1']);expect(current.cover.id).toBe('photo2');expect((await command({type:'albums.media',id:album.id})).map((row:any)=>row.id).sort()).toEqual(['photo0','photo2']);
 });
 
-it('creates five levels, moves existing albums, rejects cycles/overdepth atomically, and retains children on folder deletion',async()=>{
+it('creates five levels, moves existing albums, rejects cycles/overdepth atomically, and deletes descendants on folder deletion',async()=>{
  const first=await command({type:'albums.folder',name:'第一层'});let parent=first;
  for(let level=2;level<=5;level++)parent=await command({type:'albums.folder',name:`第${level}层`,parentId:parent.id});
  await expect(command({type:'albums.folder',name:'超出层级',parentId:parent.id})).rejects.toThrow('最多支持 5 级');
@@ -36,5 +36,26 @@ it('creates five levels, moves existing albums, rejects cycles/overdepth atomica
  await expect(command({type:'albums.folder',id:first.id,name:first.name,parentId:parent.id})).rejects.toThrow('自身或子相册');
  const album=await command({type:'albums.edit',name:'可移动相册'});await command({type:'albums.edit',id:album.id,name:album.name??'可移动相册',parentId:first.id});
  expect((await command({type:'albums.list'})).find((row:any)=>row.id===album.id).parentId).toBe(first.id);
- await command({type:'albums.delete',id:first.id});expect((await command({type:'albums.list'})).find((row:any)=>row.id===album.id).parentId).toBeNull();
+ const deleted=await command({type:'albums.delete',id:first.id});expect(deleted.deletedIds).toContain(album.id);expect(await command({type:'albums.list'})).toHaveLength(0);
+});
+
+it('deletes only the actual album subtree, preserving independent albums, tags, covers and media',async()=>{
+ const folder=await command({type:'albums.folder',name:'待删文件夹'}),parent=await command({type:'albums.edit',name:'父相册',parentId:folder.id}),child=await command({type:'albums.edit',name:'子相册',parentId:parent.id});
+ const tag=await command({type:'tags.create',name:'共享标签'});await command({type:'media.addTag',id:'photo0',tagName:tag.name});
+ const rule={relation:'AND',tags:[tag.id],notTags:[],excludedMediaIds:[]},preview=await command({type:'smart.preview',rule});
+ const nestedSmart=await command({type:'smart.save',name:'子智能相册',parentId:child.id,rule,revision:preview.revision});
+ const independent=await command({type:'albums.edit',name:'独立子相册',description:'独立使用相同媒体',tagIds:[tag.id]});await command({type:'albums.addMedia',id:child.id,mediaIds:['photo0','photo1']});await command({type:'albums.addMedia',id:independent.id,mediaIds:['photo0','photo1']});await command({type:'albums.setCover',id:independent.id,mediaId:'photo1'});
+ const externalRule=await command({type:'smart.preview',rule}),externalSmart=await command({type:'smart.save',name:'独立智能相册',rule,revision:externalRule.revision});
+ const expected=[folder.id,parent.id,child.id,nestedSmart.id].sort(),plan=await command({type:'albums.deletePreview',id:folder.id});expect(plan.total).toBe(4);expect(plan.albums.map((row:any)=>row.id).sort()).toEqual(expected);
+ const before=db.prepare('SELECT * FROM media ORDER BY id').all(),tagsBefore=await command({type:'media.tags',id:'photo0'});
+ const result=await command({type:'albums.delete',id:folder.id,revision:plan.revision});expect(result.deletedIds.sort()).toEqual(expected);
+ const remaining=await command({type:'albums.list'});expect(remaining.map((row:any)=>row.id).sort()).toEqual([independent.id,externalSmart.id].sort());expect(remaining.find((row:any)=>row.id===independent.id)).toMatchObject({manualCoverMediaId:'photo1',mediaCount:2});expect(await command({type:'albums.media',id:externalSmart.id})).toHaveLength(2);
+ expect(db.prepare('SELECT * FROM media ORDER BY id').all()).toEqual(before);expect(await command({type:'media.tags',id:'photo0'})).toEqual(tagsBefore);expect(db.pragma('foreign_key_check')).toEqual([]);
+ expect(await command({type:'albums.delete',id:folder.id})).toMatchObject({deletedIds:[]});
+});
+it('rejects a stale deletion scope and preserves a child moved out before a fresh confirmation',async()=>{
+ const parent=await command({type:'albums.edit',name:'父'}),child=await command({type:'albums.edit',name:'子',parentId:parent.id}),plan=await command({type:'albums.deletePreview',id:parent.id});
+ await command({type:'albums.edit',id:child.id,name:'子',parentId:null});await expect(command({type:'albums.delete',id:parent.id,revision:plan.revision})).rejects.toThrow('相册层级已变化');expect(await command({type:'albums.list'})).toHaveLength(2);
+ const refreshed=await command({type:'albums.deletePreview',id:parent.id});expect(refreshed.total).toBe(1);await command({type:'albums.delete',id:parent.id,revision:refreshed.revision});expect((await command({type:'albums.list'})).map((row:any)=>row.id)).toEqual([child.id]);
+ const parent2=await command({type:'albums.folder',name:'新父'}),old=await command({type:'albums.deletePreview',id:parent2.id});await command({type:'albums.edit',name:'后来添加的子相册',parentId:parent2.id});await expect(command({type:'albums.delete',id:parent2.id,revision:old.revision})).rejects.toThrow('相册层级已变化');expect(await command({type:'albums.list'})).toHaveLength(3);
 });

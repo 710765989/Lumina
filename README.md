@@ -8,9 +8,9 @@
 
 Lumina 是一款 **Windows 本地照片与视频管理器**。把已有文件夹加入图库，就能集中浏览、组合搜索、打标签、建相册，以及对比重复和相似照片。无需注册账号，日常整理可以离线完成。
 
-**正式版 1.0.0 · Windows 10 / 11 x64 · 简体中文、英语、日语**
+**正式版 1.0.1 · Windows 10 / 11 x64 · 简体中文、英语、日语**
 
-[下载安装包与免安装版](https://github.com/710765989/Lumina/releases/tag/v1.0.0) · [详细使用说明](docs/user-guide.md) · [反馈问题](https://github.com/710765989/Lumina/issues)
+[下载安装包与免安装版](https://github.com/710765989/Lumina/releases/tag/v1.0.1) · [详细使用说明](docs/user-guide.md) · [反馈问题](https://github.com/710765989/Lumina/issues)
 
 ## 它有什么不一样？
 
@@ -57,18 +57,18 @@ Lumina 是一款 **Windows 本地照片与视频管理器**。把已有文件夹
 
 ## 下载哪个文件？
 
-在 [1.0.0 发布页](https://github.com/710765989/Lumina/releases/tag/v1.0.0)选择：
+在 [1.0.1 发布页](https://github.com/710765989/Lumina/releases/tag/v1.0.1)选择：
 
 | 文件 | 用途 | 使用方式 |
 | --- | --- | --- |
-| `Lumina-1.0.0-Setup-x64.exe` | Windows 安装包 | 按向导安装，从桌面或开始菜单打开 |
-| `Lumina-1.0.0-win-x64.zip` | 免安装运行包 | 完整解压，运行 `Lumina.exe` |
-| `Lumina-1.0.0-source.zip` | 源码 | 供阅读和自行构建，不能直接运行 |
+| `Lumina-1.0.1-Setup-x64.exe` | Windows 安装包 | 按向导安装，从桌面或开始菜单打开 |
+| `Lumina-1.0.1-win-x64.zip` | 免安装运行包 | 完整解压，运行 `Lumina.exe` |
+| `Lumina-1.0.1-source.zip` | 源码 | 供阅读和自行构建，不能直接运行 |
 | `SHA256SUMS.txt` | 校验清单 | 核对下载文件的 SHA-256 |
 
 日常使用不需要安装 Node.js、Python 或 FFmpeg。安装时可选语言，之后也能在常规设置中切换。中文快捷方式为“光匣 Lumina”，英语和日语为“Lumina”。
 
-发布包尚未代码签名，Windows 可能显示未知发布者。请核对来源；可在 PowerShell 中运行 `Get-FileHash .\Lumina-1.0.0-Setup-x64.exe -Algorithm SHA256` 检查文件。
+发布包尚未代码签名，Windows 可能显示未知发布者。请核对来源；可在 PowerShell 中运行 `Get-FileHash .\Lumina-1.0.1-Setup-x64.exe -Algorithm SHA256` 检查文件。
 
 ## 关于文件和数据，先知道这几件事
 

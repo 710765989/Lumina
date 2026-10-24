@@ -136,7 +136,7 @@ it('rebuilds deleted main and child directory albums on identical settings witho
  const scans=db.prepare("SELECT COUNT(*) AS n FROM tasks WHERE kind='scan'").get();
  db.exec("CREATE TABLE qa_tag_writes(n INTEGER);CREATE TRIGGER qa_tag_write AFTER INSERT ON media_tags BEGIN INSERT INTO qa_tag_writes VALUES(1);END;");
  const repair=await configure({autoAlbums:true,hierarchy:true});expect(repair.taskId).toBeTruthy();albums=await command({type:'albums.list'});const restoredParent=albums.find((row:any)=>!row.parentId),restoredChild=albums.find((row:any)=>row.name==='child');
- expect(restoredParent).toBeTruthy();expect(restoredChild.parentId).toBe(restoredParent.id);expect(albums.find((row:any)=>row.id===deep.id).parentId).toBe(restoredChild.id);expect(restoredParent.mediaCount).toBe(3);expect(restoredChild.mediaCount).toBe(2);
+ expect(restoredParent).toBeTruthy();expect(restoredChild.parentId).toBe(restoredParent.id);expect(albums.some((row:any)=>row.id===deep.id)).toBe(false);expect(albums.find((row:any)=>row.name==='deep').parentId).toBe(restoredChild.id);expect(restoredParent.mediaCount).toBe(3);expect(restoredChild.mediaCount).toBe(2);
  expect(db.prepare("SELECT COUNT(*) AS n FROM tasks WHERE kind='scan'").get()).toEqual(scans);expect(db.prepare('SELECT COUNT(*) AS n FROM qa_tag_writes').get()).toEqual({n:0});expect((await configure({autoAlbums:true,hierarchy:true})).taskId).toBeUndefined();
 });
 it('creates the main album before background processing even if the root contains media only in child folders',async()=>{
@@ -158,4 +158,13 @@ it('migrates legacy mixed tag references without stealing ordinary tags, members
  expect((await command({type:'media.tags',id:members[0].id})).map((row:any)=>row.id)).toEqual(expect.arrayContaining([normal.id,directory.id]));expect((await command({type:'media.tags',id:members[1].id})).map((row:any)=>row.id)).not.toContain(normal.id);
  const backup=(await readdir(temp)).find(name=>name.startsWith('library.db.pre-m2-'));expect(backup).toBeTruthy();
  saveDirectoryConfiguration(db,managed.id,{autoAlbums:true,hierarchy:true,rules:[{relativePath:'',name:directory.name},{relativePath:'',name:'升级后第二目录标签'}]});expect((await command({type:'roots.configuration',id:managed.id})).rules).toHaveLength(2);
+});
+
+it('deleting a generated parent keeps a separately created album for the same child directory',async()=>{
+ await configure({autoAlbums:true,hierarchy:true});const original=await command({type:'albums.list'}),main=original.find((row:any)=>!row.parentId);
+ const independent=await command({type:'roots.configure',absolutePath:path.join(root,'child'),label:'单独创建的子目录相册',autoAlbums:true,hierarchy:true,rules:[]});if(independent.taskId)await done(independent.taskId);
+ const bindings=db.prepare('SELECT album_id AS id FROM directory_albums WHERE root_id=? ORDER BY album_id').all(independent.root.id) as {id:string}[],keep=bindings.map(row=>row.id),originalIds=original.map((row:any)=>row.id);
+ expect(keep).toHaveLength(2);const before=await Promise.all(keep.map(id=>command({type:'albums.media',id}))),mediaBefore=db.prepare('SELECT id FROM media ORDER BY id').all();
+ await command({type:'albums.delete',id:main.id});const after=await command({type:'albums.list'});expect(after.map((row:any)=>row.id).sort()).toEqual([...keep].sort());expect(after.some((row:any)=>originalIds.includes(row.id))).toBe(false);
+ expect(await Promise.all(keep.map(id=>command({type:'albums.media',id})))).toEqual(before);expect(db.prepare('SELECT id FROM media ORDER BY id').all()).toEqual(mediaBefore);expect(db.prepare('SELECT album_id AS id FROM directory_albums WHERE root_id=? ORDER BY album_id').all(independent.root.id)).toEqual(bindings);expect(db.pragma('foreign_key_check')).toEqual([]);
 });

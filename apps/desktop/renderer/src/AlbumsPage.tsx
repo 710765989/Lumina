@@ -1,3 +1,4 @@
+import {AlbumDeleteDialog} from './AlbumDeleteDialog';
 import {t,translateMessage} from './i18n';
 import {AlbumBreadcrumbs} from './AlbumBreadcrumbs';
 import {ActionButton,ActionForm} from './ActionControls';
@@ -89,7 +90,7 @@ export function AlbumsPage({ onClear,onSelectMany,onSortChange,albums, tags, onC
     {exclusions && <SmartExclusionsDialog album={exclusions} onClose={()=>setExclusions(null)} onChanged={refresh}/>}
     {editor && <AlbumEditor key={typeof editor==='object'?editor.id:'new'} album={editor} albums={albums} parentId={activeId} tags={tags} onClose={() => setEditor(null)} onSaved={refresh} />}
     {folderEditor && <AlbumFolderDialog folder={folderEditor} albums={albums} parentId={activeId} onClose={()=>setFolderEditor(null)} onSaved={refresh}/>}
-    {deleting && <LibraryConfirmDialog title={t("删除相册")} description={t("删除「{0}」？{1}", [deleting.name, deleting.kind==='folder'?t("文件夹中的下级相册将保留并移到上一层。"):t("仅删除相册和引用，不删除照片与视频。")])} onClose={() => setDeleting(null)} onConfirm={async () => { await window.lumina.command({ type: 'albums.delete', id: deleting.id }); if (activeId === deleting.id) setActiveId(null); await refresh(); }} />}
+    {deleting && <AlbumDeleteDialog id={deleting.id} onClose={()=>setDeleting(null)} onDeleted={async ids=>{if(activeId&&ids.includes(activeId))setActiveId(deleting.parentId??null);await refresh();}}/>}
   </section>;
 }
 

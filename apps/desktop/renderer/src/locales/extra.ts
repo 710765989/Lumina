@@ -1,4 +1,11 @@
 export const extraMessages:Record<string,readonly [string,string]>={
+ '正在删除…':['Deleting…','削除中…'],
+ '正在读取删除范围…':['Loading albums to delete…','削除するアルバムを確認中…'],
+ '将删除「{0}」及其全部下级相册，共 {1} 个。':['Delete “{0}” and all its child albums ({1} in total).','「{0}」と配下のすべてのアルバム（合計{1}件）を削除します。'],
+ '只删除以上相册和相册关系，不删除原照片、视频或标签。':['Only the listed albums and their memberships will be deleted. Original photos, videos and tags will remain.','上記のアルバムと所属関係だけを削除します。元の写真・動画・タグは残ります。'],
+ '独立创建的相册会保留，即使使用相同目录或媒体。':['Separately created albums will remain, even if they use the same folders or media.','同じフォルダーやメディアを使用していても、別途作成したアルバムは残ります。'],
+ '刷新删除范围':['Refresh albums to delete','削除対象を更新'],
+ '相册层级已变化，请刷新删除范围后重试。':['The album hierarchy changed. Refresh the deletion list and try again.','アルバムの階層が変更されました。削除対象を更新して再試行してください。'],
  '多个标签使用了该别名，请选择具体标签':['Several tags use this alias. Please choose a specific tag.','同じ別名のタグが複数あります。タグを指定してください。'],
  'Tag 名':['Tag name','タグ名'],
  '别名':['Alias','別名'],

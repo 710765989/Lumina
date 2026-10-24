@@ -8,9 +8,9 @@
 
 Luminaは、**Windows向けのローカル写真・動画管理アプリ**です。既存のフォルダーを追加すると、まとめて閲覧・検索し、タグやアルバムで整理できます。重複ファイルや似た写真の比較にも対応。アカウント登録は不要で、日常の整理はオフラインで行えます。
 
-**正式版 1.0.0 · Windows 10 / 11 x64 · 中国語・英語・日本語**
+**正式版 1.0.1 · Windows 10 / 11 x64 · 中国語・英語・日本語**
 
-[インストーラー・ZIP版をダウンロード](https://github.com/710765989/Lumina/releases/tag/v1.0.0) · [詳しい使い方：中国語](docs/user-guide.md) · [不具合を報告](https://github.com/710765989/Lumina/issues)
+[インストーラー・ZIP版をダウンロード](https://github.com/710765989/Lumina/releases/tag/v1.0.1) · [詳しい使い方：中国語](docs/user-guide.md) · [不具合を報告](https://github.com/710765989/Lumina/issues)
 
 ## どんなところが便利？
 
@@ -57,18 +57,18 @@ Luminaは、**Windows向けのローカル写真・動画管理アプリ**です
 
 ## どれをダウンロードする？
 
-[1.0.0のリリースページ](https://github.com/710765989/Lumina/releases/tag/v1.0.0)で選んでください。
+[1.0.1のリリースページ](https://github.com/710765989/Lumina/releases/tag/v1.0.1)で選んでください。
 
 | ファイル | 用途 | 使い方 |
 | --- | --- | --- |
-| `Lumina-1.0.0-Setup-x64.exe` | Windowsインストーラー | ウィザードに従い、デスクトップやスタートメニューから起動 |
-| `Lumina-1.0.0-win-x64.zip` | インストール不要版 | 全体を展開して `Lumina.exe` を起動 |
-| `Lumina-1.0.0-source.zip` | コードの閲覧・ビルド | ソースコード。アプリとして直接実行はできません |
+| `Lumina-1.0.1-Setup-x64.exe` | Windowsインストーラー | ウィザードに従い、デスクトップやスタートメニューから起動 |
+| `Lumina-1.0.1-win-x64.zip` | インストール不要版 | 全体を展開して `Lumina.exe` を起動 |
+| `Lumina-1.0.1-source.zip` | コードの閲覧・ビルド | ソースコード。アプリとして直接実行はできません |
 | `SHA256SUMS.txt` | ダウンロードの確認 | SHA-256の値を照合 |
 
 利用時にNode.js、Python、FFmpegを別途インストールする必要はありません。インストール時に言語を選べ、一般設定からも変更できます。日本語・英語のショートカット名は **Lumina**、中国語は **光匣 Lumina** です。
 
-配布ファイルはコード署名されていないため、Windowsに「不明な発行元」と表示される場合があります。入手元を確認し、PowerShellの `Get-FileHash .\Lumina-1.0.0-Setup-x64.exe -Algorithm SHA256` でファイルを照合できます。
+配布ファイルはコード署名されていないため、Windowsに「不明な発行元」と表示される場合があります。入手元を確認し、PowerShellの `Get-FileHash .\Lumina-1.0.1-Setup-x64.exe -Algorithm SHA256` でファイルを照合できます。
 
 ## ファイルとデータについて
 

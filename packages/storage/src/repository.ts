@@ -2,7 +2,7 @@ import {tagHiddenSql} from './visibility.js';
 import {directoryTagInUse,saveDirectoryConfiguration,directoryContains,directoryRuleContext,applyDirectoryRules} from './directory-rules.js';
 import {mediaOrder,type MediaSortBy} from './media-sort.js';
 import { ancestorTagIds, descendantTagIds, tagFamilySql, inheritTagAncestors, tagHierarchy, exclusiveTagBranch, setTagParents } from './tag-hierarchy.js';
-import { randomUUID,randomInt } from 'node:crypto';
+import { randomUUID,randomInt,createHash } from 'node:crypto';
 import path from 'node:path';
 import {tagColors} from '@lumina/contracts';
 import type { MediaKind, MediaRecord } from '@lumina/contracts';
@@ -325,8 +325,26 @@ function validateAlbumName(db: LuminaDatabase, name: string, exceptId = ''): str
   return trimmed;
 }
 
-export function deleteAlbum(db: LuminaDatabase, id: string): void {
-  db.transaction(()=>{const album=getAlbum(db,id);if(!album)return;db.prepare('UPDATE albums SET parent_id=? WHERE parent_id=?').run(album.parentId??null,id);db.prepare('DELETE FROM albums WHERE id=?').run(id);})();
+export function albumDeletionPreview(db:LuminaDatabase,id:string){
+  // Ownership is the album tree, not a shared directory, name, tag or media.
+  // UNION also bounds legacy malformed cycles without following any external
+  // album that merely points at the same source files.
+  const albums=db.prepare(`WITH RECURSIVE branch(id) AS (
+    SELECT id FROM albums WHERE id=? UNION SELECT a.id FROM albums a JOIN branch b ON a.parent_id=b.id
+  ) SELECT a.id,a.name,a.parent_id AS parentId FROM albums a JOIN branch b ON a.id=b.id ORDER BY a.id`).all(id) as {id:string;name:string;parentId:string|null}[];
+  return {albums,total:albums.length,revision:createHash('sha256').update(JSON.stringify(albums)).digest('hex')};
+}
+export function deleteAlbum(db: LuminaDatabase, id: string,revision?:string): string[] {
+  return db.transaction(()=>{
+    const preview=albumDeletionPreview(db,id);
+    if(revision!==undefined&&revision!==preview.revision)throw new Error('相册层级已变化，请刷新删除范围后重试。');
+    const ids=preview.albums.map(album=>album.id);
+    // Snapshot the complete branch before deleting: ON DELETE SET NULL must
+    // not detach descendants before we have collected them. Foreign keys clean
+    // album memberships, smart rules and directory bindings, never the media.
+    db.prepare('DELETE FROM albums WHERE id IN(SELECT value FROM json_each(?))').run(JSON.stringify(ids));
+    return ids;
+  })();
 }
 
 export function addMediaToAlbum(db: LuminaDatabase, albumId: string, mediaIds: string[]): number {

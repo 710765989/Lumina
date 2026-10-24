@@ -17,7 +17,7 @@ import {
   addMediaToAlbum,
   createAlbum,
   createTag,
-  deleteAlbum,
+  deleteAlbum,albumDeletionPreview,
   deleteTag,
   getAlbum,
   getMediaById,
@@ -297,7 +297,8 @@ export class LibraryService {
       case 'albums.list': return listAlbums(this.db).map((album) => { const cover = reconcileCover(this.db, album.id); return { ...getAlbum(this.db,album.id)!, kind: album.isFolder?'folder':albumRule(this.db, album.id) ? 'smart' : 'ordinary', rule: albumRule(this.db, album.id), cover, ...albumSummary(this.db,album.id), tagIds: (this.db.prepare('SELECT tag_id AS id FROM album_tags WHERE album_id=?').all(album.id) as { id: string }[]).map((tag) => tag.id) }; });
       case 'albums.create': return createAlbum(this.db, command.name, command.description);
       case 'albums.update': updateAlbum(this.db, command.id, command); return getAlbum(this.db, command.id);
-      case 'albums.delete': deleteAlbum(this.db, command.id); return { ok: true };
+      case 'albums.deletePreview': return albumDeletionPreview(this.db,command.id);
+      case 'albums.delete': {const deletedIds=deleteAlbum(this.db,command.id,command.revision);this.notify();return {ok:true,deletedIds};}
       case 'albums.filteredStats': return searchMediaStats(this.db,command.query,{...command,albumId:command.id});
       case 'tags.filteredStats': return searchMediaStats(this.db,command.query,{...command,tagId:command.id});
       case 'albums.media': return listAlbumMedia(this.db, command.id, command);

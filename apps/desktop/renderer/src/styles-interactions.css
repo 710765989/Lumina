@@ -366,3 +366,8 @@ button[aria-busy=true]{cursor:progress}form[aria-busy=true] button[type=submit]{
 .tag-drag-overlay{position:fixed;left:0;top:0;z-index:120;pointer-events:none;transform-origin:0 0;will-change:transform;contain:layout style}.tag-drag-overlay>.tag-management-row{margin:0!important;min-height:48px;overflow:hidden;border-color:#7aa9e8;background:#fff;box-shadow:0 9px 28px #24467530;opacity:.94}.tag-drag-overlay .section-actions,.tag-drag-overlay .tag-tree-toggle{display:none}.tag-drag-overlay .tag-browse{flex:1;pointer-events:none}.tag-drag-overlay .tag-detail-summary{margin-left:auto}.tag-drag-mode{position:absolute;right:7px;top:-13px;background:#3976d5;color:white;padding:2px 7px;border-radius:7px;font-size:10px}.tag-tree-dragging,.tag-tree-dragging *{cursor:var(--tag-drag-cursor,grabbing)!important;user-select:none!important}
 
 .language-choice{display:flex;align-items:center;gap:10px;flex-shrink:0}.language-choice select{min-width:160px;padding:8px 12px;border:1px solid #dce5f1;border-radius:8px;background:white;color:#405774;font:inherit}.language-settings .section-head{flex-wrap:wrap;gap:16px}:lang(en) .sidebar{font-size:13px}:lang(en) .section-actions{flex-wrap:wrap}:lang(ja) body{font-family:'Segoe UI','Yu Gothic UI','Meiryo',sans-serif}
+
+/* Keep the gallery pictogram aligned with the other sidebar icons. */
+.nav-item .nav-gallery-icon{display:inline-flex;flex:0 0 18px;align-items:center;justify-content:center}.nav-gallery-icon svg{display:block}
+
+.album-delete-list{max-height:220px;overflow:auto;border:1px solid #e5eaf2;border-radius:8px;padding:10px 12px;display:grid;gap:6px;font-size:13px;overflow-wrap:anywhere}

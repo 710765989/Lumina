@@ -8,9 +8,9 @@
 
 Lumina is a **local photo and video organizer for Windows**. Add your existing folders to browse everything in one place, combine search filters, add tags, build albums and compare duplicate or similar photos. No account is required, and everyday organizing works offline.
 
-**Version 1.0.0 · Windows 10 / 11 x64 · Chinese, English and Japanese**
+**Version 1.0.1 · Windows 10 / 11 x64 · Chinese, English and Japanese**
 
-[Download the installer or ZIP](https://github.com/710765989/Lumina/releases/tag/v1.0.0) · [Detailed guide, in Chinese](docs/user-guide.md) · [Report an issue](https://github.com/710765989/Lumina/issues)
+[Download the installer or ZIP](https://github.com/710765989/Lumina/releases/tag/v1.0.1) · [Detailed guide, in Chinese](docs/user-guide.md) · [Report an issue](https://github.com/710765989/Lumina/issues)
 
 ## What makes it useful?
 
@@ -57,18 +57,18 @@ The recordings show the Chinese interface with an isolated example collection. T
 
 ## Which download do I need?
 
-Choose an asset on the [1.0.0 release page](https://github.com/710765989/Lumina/releases/tag/v1.0.0):
+Choose an asset on the [1.0.1 release page](https://github.com/710765989/Lumina/releases/tag/v1.0.1):
 
 | File | Purpose | How to use it |
 | --- | --- | --- |
-| `Lumina-1.0.0-Setup-x64.exe` | Windows installer | Follow the wizard, then open the desktop or Start menu shortcut |
-| `Lumina-1.0.0-win-x64.zip` | Run without installing | Extract the entire ZIP and run `Lumina.exe` |
-| `Lumina-1.0.0-source.zip` | Read or build the code | Source files; not a runnable app |
+| `Lumina-1.0.1-Setup-x64.exe` | Windows installer | Follow the wizard, then open the desktop or Start menu shortcut |
+| `Lumina-1.0.1-win-x64.zip` | Run without installing | Extract the entire ZIP and run `Lumina.exe` |
+| `Lumina-1.0.1-source.zip` | Read or build the code | Source files; not a runnable app |
 | `SHA256SUMS.txt` | Verify downloads | Compare the file's SHA-256 hash |
 
 You do not need Node.js, Python or a separate FFmpeg installation to use the app. Choose a language during installation or change it later in General settings. English and Japanese shortcuts are named **Lumina**; Chinese shortcuts are named **光匣 Lumina**.
 
-Downloads are not code-signed, so Windows may show an unknown publisher warning. Check the source and use `Get-FileHash .\Lumina-1.0.0-Setup-x64.exe -Algorithm SHA256` in PowerShell to verify the file.
+Downloads are not code-signed, so Windows may show an unknown publisher warning. Check the source and use `Get-FileHash .\Lumina-1.0.1-Setup-x64.exe -Algorithm SHA256` in PowerShell to verify the file.
 
 ## A few things to know about your files
 

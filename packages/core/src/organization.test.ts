@@ -549,7 +549,7 @@ describe('M2 organization workflows', () => {
     expect((await command({type:'media.tags',id:media[0].id})).map((tag:any)=>tag.name).sort()).toEqual(['手动标签','相册父标签','相册子标签'].sort());
     await command({type:'albums.addMedia',id:nested.id,mediaIds:[media[1].id]});expect((await command({type:'media.tags',id:media[1].id})).map((tag:any)=>tag.name).sort()).toEqual(['相册父标签','相册子标签'].sort());
     await command({type:'albums.edit',id:album.id,name:'父相册',tagIds:[]});await command({type:'albums.removeMedia',id:nested.id,mediaIds:[media[0].id]});await command({type:'albums.delete',id:album.id});expect((await command({type:'media.tags',id:media[0].id})).map((tag:any)=>tag.name).sort()).toEqual(['手动标签','相册父标签','相册子标签'].sort());
-    await expect(command({type:'albums.edit',id:nested.id,name:'子相册',tagIds:[child.id],coverMediaId:media[2].id})).rejects.toThrow('封面');expect((await command({type:'albums.list'})).find((row:any)=>row.id===nested.id).tagIds).toEqual([]);
+    await expect(command({type:'albums.edit',id:nested.id,name:'子相册',tagIds:[child.id],coverMediaId:media[2].id})).rejects.toThrow('相册不存在');expect((await command({type:'albums.list'})).some((row:any)=>row.id===nested.id)).toBe(false);
   });
   it('filters hidden collections across search, statistics, timeline and playback without leaking visible or disabled media',async()=>{
     const a=media.find(row=>row.absolutePath===path.join(library,'a.jpg'))!,b=media.find(row=>row.absolutePath===path.join(library,'b.jpg'))!;
