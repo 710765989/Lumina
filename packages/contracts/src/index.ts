@@ -39,6 +39,7 @@ export const errorCodes = {
 export * from './ipc.js';
 export * from './organization.js';
 export * from './search-text.js';
+export * from './japanese-text.js';
 export * from './tag-graph.js';
 export * from './user-error.js';
 export * from './tag-colors.js';

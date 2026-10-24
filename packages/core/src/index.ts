@@ -7,7 +7,7 @@ import sharp from 'sharp';
 // Persistent previews already live in our disk cache. Vips must release source
 // file handles so a photo can be moved/deleted immediately after viewing on Windows.
 sharp.cache(false);
-import { extractMetadata } from './geography.js';
+import { extractMetadata,scannedGeography } from './geography.js';
 import { probeVideoMetadata } from './thumbnail.js';
 import type { MediaKind, MediaRecord, TaskRecord, TaskStatus } from '@lumina/contracts';
 import {
@@ -180,7 +180,7 @@ async function performScanDirectory(db: LuminaDatabase, root: string, options: S
     const previous = db.prepare('SELECT m.id,m.fingerprint,m.captured_at_ms AS capturedAtMs,d.metadata_json AS metadata,d.missing,d.file_identity AS fileIdentity FROM media m LEFT JOIN media_details d ON d.media_id=m.id WHERE m.absolute_path=?').get(filePath) as {id:string;fingerprint:string;capturedAtMs:number|null;metadata:string|null;missing:number;fileIdentity:string|null}|undefined;
     const unchanged = previous?.fingerprint === createHash('sha256').update(`${filePath}\0${info.size}\0${info.mtimeMs}`).digest('hex');
     const savedMetadata=previous?.metadata ? JSON.parse(previous.metadata) : null;
-    const metadata = unchanged && savedMetadata?.width ? savedMetadata : kind === 'photo' ? await extractMetadata(filePath) : await probeVideoMetadata(filePath);
+    const metadata = unchanged && savedMetadata?.width ? savedMetadata : kind === 'photo' ? scannedGeography(await extractMetadata(filePath),savedMetadata??{}) : await probeVideoMetadata(filePath);
       return {info,kind,previous,unchanged,savedMetadata,metadata};
     });
   };

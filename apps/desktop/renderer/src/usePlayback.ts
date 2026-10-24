@@ -1,3 +1,4 @@
+import {t} from './i18n';
 import type {MediaFilters} from './CollectionSearch';
 import {userErrorMessage} from './user-error';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -29,7 +30,7 @@ export function usePlayback(item:Media, items:Media[], source:PlaybackSource|und
     cached.current.clear();setNearby([]);setError('');pending.current=false;setMoving(false);
     if(source){setPlaylist(null);void window.lumina.command({type:'media.playlist',source:JSON.parse(key).source}).then((result:string[])=>{
       if(valid && version.current===generation)setPlaylist({key,ids:result});
-    }).catch((reason)=>{if(valid)setError(`读取播放列表失败：${userErrorMessage(reason)}`);});}
+    }).catch((reason)=>{if(valid)setError(t("读取播放列表失败：{0}", [userErrorMessage(reason)]));});}
     return()=>{valid=false;version.current++;};
   },[key,retry]);
   useEffect(()=>{
@@ -42,7 +43,7 @@ export function usePlayback(item:Media, items:Media[], source:PlaybackSource|und
       const next=new Map(rows.map((media)=>[media.id,media]));
       const records=wanted.map((id)=>id===item.id ? item : loaded.get(id) ?? next.get(id) ?? cached.current.get(id)).filter((media):media is Media=>Boolean(media));
       cached.current=new Map(records.map((media)=>[media.id,media]));setNearby(records);
-    }).catch((reason)=>{if(valid)setError(`读取胶片预览失败：${userErrorMessage(reason)}`);});
+    }).catch((reason)=>{if(valid)setError(t("读取胶片预览失败：{0}", [userErrorMessage(reason)]));});
     return()=>{valid=false;};
   },[ids,index,ready,loaded,item]);
 
@@ -58,8 +59,8 @@ export function usePlayback(item:Media, items:Media[], source:PlaybackSource|und
         const next=rows[0];
         if(next){onChange(next);return;}
       }
-      setError('后续媒体已移除或不可用，请刷新图库后重试');
-    } catch(reason) {if(generation===version.current)setError(`切换媒体失败：${userErrorMessage(reason)}`);}
+      setError(t("后续媒体已移除或不可用，请刷新图库后重试"));
+    } catch(reason) {if(generation===version.current)setError(t("切换媒体失败：{0}", [userErrorMessage(reason)]));}
     finally {if(generation===version.current){pending.current=false;setMoving(false);}}
   }
   return {ids,index,ready,moving,nearby,error,goTo,retry:()=>setRetry((value)=>value+1)};

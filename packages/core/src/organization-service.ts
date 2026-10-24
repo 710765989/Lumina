@@ -11,11 +11,13 @@ import { createHash, randomUUID } from 'node:crypto';
 import sharp from 'sharp';
 import type { OrganizationCommand } from '@lumina/contracts';
 import { matchesSearch } from '@lumina/contracts';
+import {searchMedia,searchMediaStats,searchMediaIds,mediaTimeline,mediaSortValue,mediaOrder} from '@lumina/storage';
 import { albumRule, albumMembers, rawMedia, mediaColumns, visibleSql, readMediaRows, rulePreview, ruleMembers, saveSmartAlbum, saveOrdinaryAlbum, mergePreview, mergeTags, tagDetails, settings, saveSettings, logOrganization, reconcileAllCovers, reconcileCover, updateMetadata, listMediaTags, refreshMediaStats, type LuminaDatabase } from '@lumina/storage';
 import { RecycleBin } from './recycle-bin.js';
 import { OrganizationJobs } from './organization-jobs.js';
 import {StorageCacheManager} from './storage-cache.js';
-import { extractMetadata } from './geography.js';
+import { extractMetadata,needsGeographicOrganization } from './geography.js';
+import {geographyCleanupPreview,geographyCleanupSummary,cleanupGeographicCollections} from './geography-cleanup.js';
 import { scanDirectory, scanIsActive } from './index.js';
 import { runFfmpeg } from './thumbnail.js';
 import { albumCandidates } from '@lumina/storage';
@@ -92,9 +94,9 @@ export class OrganizationService {
         });this.notify();return {ok:true};
       }
       case 'media.nameSuggestions': {
-        if (/^[a-z]+$/iu.test(command.query)) {
+        if (command.searchLanguage!=='en' && (command.searchLanguage==='ja' || /^[a-z]+$/iu.test(command.query))) {
           const names = this.db.prepare(`SELECT COALESCE(NULLIF(m.file_name,''),m.absolute_path) AS name,COUNT(*) AS count FROM media m WHERE ${visibleSql()} GROUP BY name COLLATE NOCASE ORDER BY name COLLATE NOCASE`).all() as {name:string;count:number}[];
-          return names.filter((row)=>matchesSearch(row.name,command.query)).sort((a,b)=>Number(b.name.toLowerCase()===command.query.toLowerCase())-Number(a.name.toLowerCase()===command.query.toLowerCase()) || Number(b.name.toLowerCase().startsWith(command.query.toLowerCase()))-Number(a.name.toLowerCase().startsWith(command.query.toLowerCase()))).slice(0,command.limit);
+          return names.filter((row)=>matchesSearch(row.name,command.query,command.searchLanguage)).sort((a,b)=>Number(b.name.toLowerCase()===command.query.toLowerCase())-Number(a.name.toLowerCase()===command.query.toLowerCase()) || Number(b.name.toLowerCase().startsWith(command.query.toLowerCase()))-Number(a.name.toLowerCase().startsWith(command.query.toLowerCase()))).slice(0,command.limit);
         }
         const like=`%${command.query.replace(/[\\%_]/gu,'\\$&')}%`;
         return this.db.prepare(`SELECT COALESCE(NULLIF(m.file_name,''),m.absolute_path) AS name,COUNT(*) AS count FROM media m WHERE ${visibleSql()}
@@ -115,7 +117,7 @@ export class OrganizationService {
         const used=this.db.prepare('SELECT 1 FROM media_tags WHERE tag_id=? LIMIT 1');return [...selected,...all.filter((tag)=>!recent.includes(tag.id) && used.get(tag.id))].slice(0,10);
       }
       case 'tags.edit': return this.db.transaction(()=>{const locked=this.db.prepare('SELECT 1 FROM directory_rules WHERE tag_id=?').get(command.id);if(locked && (command.parentIds!==undefined || command.parentId!==undefined)){const current=tagHierarchy(this.db).find(row=>row.id===command.id)?.parentIds??[];const next=command.parentIds??(command.parentId?[command.parentId]:[]);if(JSON.stringify([...current].sort())!==JSON.stringify([...next].sort()))throw new Error('目录标签的层级由目录规则管理，请在目录设置中修改');}renameTag(this.db,command.id,command.name);if(command.englishName!==undefined)this.db.prepare('UPDATE tags SET english_name=? WHERE id=?').run(command.englishName,command.id);if(command.parentIds!==undefined)setTagParents(this.db,command.id,command.parentIds);else if(command.parentId!==undefined)reparentTag(this.db,command.id,command.parentId);reconcileAllCovers(this.db);refreshMediaStats(this.db);this.notify();return {ok:true};})();
-      case 'tags.moveReference': return this.db.transaction(()=>{moveTagReference(this.db,command.id,command.fromParentId,command.parentId);reconcileAllCovers(this.db);refreshMediaStats(this.db);this.notify();return {ok:true};})();
+      case 'tags.moveReference': return this.db.transaction(()=>{moveTagReference(this.db,command.id,command.fromParentId,command.parentId,command.copy);reconcileAllCovers(this.db);refreshMediaStats(this.db);this.notify();return {ok:true};})();
       case 'tags.deletePreview': return tagDeletionPreview(this.db,command.id);
       case 'tasks.activity': return {active:(this.db.prepare("SELECT COUNT(*) AS count FROM tasks WHERE status IN('running','queued')").get() as {count:number}).count};
       case 'tasks.page': return taskPage(this.db,command.limit,command.offset,command.filter);
@@ -266,22 +268,35 @@ export class OrganizationService {
       case 'similar.cleanupPreview': return similarCleanup(this.db,command.level,command.keepLargest,command.removeIds);
       case 'similar.validateCleanup': return this.validateWithAbort((signal)=>validateSimilarCleanup(this.db,command.level,command.keepLargest,command.revision,command.removeIds,signal,command.allowDeleteAll));
       case 'geo.places': {
-        const rows = readMediaRows(this.db.prepare(`SELECT ${mediaColumns} FROM media m WHERE ${visibleSql()}`).all());
+        const rows = readMediaRows(this.db.prepare(`SELECT ${mediaColumns},${mediaSortValue(command.sortBy)} AS coverSortValue FROM media m WHERE ${visibleSql()} ORDER BY ${mediaOrder(command.sortBy,command.sort)}`).all());
         const located = rows.filter((item) => item.metadata.city);
+        const coverHashes=new Map<string,ReturnType<typeof createHash>>();
         const places = new Map<string, { country: string; region: string; city: string; count: number; samples: typeof rows; years: Record<string, number> }>();
         for (const item of located) {
           const { country = '', region = '', city = '' } = item.metadata; const key = JSON.stringify([country, region, city]);
           const place: { country: string; region: string; city: string; count: number; samples: typeof rows; years: Record<string, number> } = places.get(key) ?? { country, region, city, count: 0, samples: [], years: {} };
-          place.count++; if (place.samples.length < 4) place.samples.push(item);
+          place.count++; if (place.samples.length < 12) place.samples.push(item);
+          const hash=coverHashes.get(key)??createHash('sha256');hash.update(JSON.stringify([item.id,item.fingerprint,item.capturedAtMs??item.modifiedAtMs]));coverHashes.set(key,hash);
           const year = String(new Date(item.capturedAtMs ?? item.modifiedAtMs).getFullYear()); place.years[year] = (place.years[year] ?? 0) + 1;
           places.set(key, place);
         }
-        return { places: [...places.values()].sort((a, b) => b.count - a.count), countries: new Set(located.map((item) => item.metadata.country)).size, cities: places.size, noLocation: rows.filter((item) => !item.metadata.city && !Number.isFinite(item.metadata.latitude)).length, pendingLocation: rows.filter((item) => !item.metadata.city && Number.isFinite(item.metadata.latitude)).length,
-          runs: this.db.prepare('SELECT id,created_at AS createdAt,undone FROM geo_runs ORDER BY created_at DESC LIMIT 10').all() };
+        return { places: [...places.entries()].map(([key,value])=>({...value,coverRevision:coverHashes.get(key)!.digest('hex')})).sort((a, b) => b.count - a.count), countries: new Set(located.map((item) => item.metadata.country)).size, cities: places.size, noLocation: rows.filter((item) => !item.metadata.city && !Number.isFinite(item.metadata.latitude)).length, pendingLocation: rows.filter((item) => !item.metadata.city && Number.isFinite(item.metadata.latitude)).length,
+          pendingOrganization:rows.filter(item=>item.kind==='photo'&&needsGeographicOrganization(item)).length,legacy:geographyCleanupSummary(this.db),
+          runs: this.db.prepare("SELECT r.id,r.created_at AS createdAt,r.undone,(SELECT t.status FROM tasks t WHERE t.kind='geo' AND json_extract(t.payload_json,'$.geoRunId')=r.id LIMIT 1) AS status FROM geo_runs r ORDER BY r.created_at DESC LIMIT 10").all() };
       }
-      case 'geo.media': {
-        return readMediaRows(this.db.prepare(`SELECT ${mediaColumns} FROM media m WHERE ${visibleSql()} ORDER BY COALESCE(m.captured_at_ms,m.modified_at_ms) DESC,m.id`).all()).filter((item) => command.noLocation ? !item.metadata.city && !Number.isFinite(item.metadata.latitude) :
-          (!command.country || item.metadata.country === command.country) && (!command.region || item.metadata.region === command.region) && (!command.city || item.metadata.city === command.city)).slice(command.offset, command.offset + command.limit);
+      case 'geo.coverCandidates':{
+        const value=mediaSortValue(command.sortBy),cursor=command.cursor,comparison=command.sort==='asc'?'>':'<';
+        const rows=readMediaRows(this.db.prepare(`SELECT ${mediaColumns},${value} AS coverSortValue FROM media m JOIN media_details gd ON gd.media_id=m.id WHERE ${visibleSql()} AND COALESCE(json_extract(gd.metadata_json,'$.country'),'')=? AND COALESCE(json_extract(gd.metadata_json,'$.region'),'')=? AND COALESCE(json_extract(gd.metadata_json,'$.city'),'')=? ${cursor?`AND (${value}${comparison}? OR (${value}=? AND m.id>?))`:''} ORDER BY ${mediaOrder(command.sortBy,command.sort)} LIMIT ?`).all(command.country,command.region,command.city,...(cursor?[cursor.value,cursor.value,cursor.id]:[]),command.limit+1));
+        return {items:rows.slice(0,command.limit),hasMore:rows.length>command.limit};
+      }
+      case 'geo.cleanupPreview':return geographyCleanupPreview(this.db);
+      case 'geo.cleanup':{const result=cleanupGeographicCollections(this.db,command.revision);this.notify();return result;}
+      case 'geo.media':case 'geo.stats':case 'geo.ids':case 'geo.timeline': {
+        const options={...command,place:{country:command.country,region:command.region,city:command.city,noLocation:command.noLocation}};
+        if(command.type==='geo.stats')return searchMediaStats(this.db,command.query,options);
+        if(command.type==='geo.ids')return searchMediaIds(this.db,command.query,options);
+        if(command.type==='geo.timeline')return mediaTimeline(this.db,command.query,options);
+        return searchMedia(this.db,command.query,options);
       }
       case 'geo.undo': { const result = this.jobs.undoGeo(command.id); this.notify(); return result; }
       case 'storage.revision': return this.storage.revision();

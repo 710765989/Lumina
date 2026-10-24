@@ -169,16 +169,22 @@ export function getMediaById(db: LuminaDatabase, mediaId: string, includeHidden=
   return row ? toMedia(row) : undefined;
 }
 
-export type MediaSearchOptions = { query?:string;hiddenOnly?:boolean;albumId?:string;tagId?:string; timeBeforeMs?:number;timeFromMs?:number; untaggedOnly?:boolean;excludeUntagged?:boolean; fileNames?: string[];excludeFileNames?:string[];extensions?:string[]; tagNames?: string[]; excludeTagNames?: string[]; includeHidden?: boolean; kind?: 'photo' | 'video'; sort?: 'asc' | 'desc'; sortBy?: MediaSortBy; limit?: number; offset?: number };
+export type MediaSearchOptions = { searchLanguage?:import('@lumina/contracts').SearchLanguage; place?:{country?:string;region?:string;city?:string;noLocation?:boolean};query?:string;hiddenOnly?:boolean;albumId?:string;tagId?:string; timeBeforeMs?:number;timeFromMs?:number; untaggedOnly?:boolean;excludeUntagged?:boolean; fileNames?: string[];excludeFileNames?:string[];extensions?:string[]; tagNames?: string[]; excludeTagNames?: string[]; includeHidden?: boolean; kind?: 'photo' | 'video'; sort?: 'asc' | 'desc'; sortBy?: MediaSortBy; limit?: number; offset?: number };
 function mediaSearchSql(db:LuminaDatabase,query: string, options: MediaSearchOptions) {
+  const locale=options.searchLanguage==='en'?'en':options.searchLanguage==='ja'?'ja':'zh-CN';
+  const phoneticMatch=(text:string)=>`lumina_matches_locale(${text},?,'${locale}')`;
   const clauses: string[] = []; const parameters: (string | number)[] = [];
+  if(options.place){const value=options.place;const meta="COALESCE((SELECT metadata_json FROM media_details gd WHERE gd.media_id=m.id),'{}')";
+    if(value.noLocation)clauses.push(`(COALESCE(json_extract(${meta},'$.city'),'')='' AND (json_type(${meta},'$.latitude') NOT IN ('integer','real') OR json_type(${meta},'$.latitude') IS NULL))`);
+    else for(const key of ['country','region','city'] as const)if(value[key]!==undefined){clauses.push(`COALESCE(json_extract(${meta},'$.${key}'),'')=?`);parameters.push(value[key]!);}
+  }
   if(options.albumId){const match=albumMatchSql(db,options.albumId);clauses.push(match.where);parameters.push(...match.parameters);}
   if(options.tagId){clauses.push(`m.id IN(SELECT mt.media_id FROM media_tags mt JOIN (${tagFamilySql}) family ON family.id=mt.tag_id WHERE family.ancestor=?)`);parameters.push(options.tagId);}
   const fileName = "COALESCE(NULLIF(m.file_name,''),m.absolute_path)";
   const like = (value: string) => `%${value.replace(/[\\%_]/gu, '\\$&')}%`;
   const tagMatch = `EXISTS(SELECT 1 FROM media_tags mt JOIN (${tagFamilySql}) family ON family.id=mt.tag_id JOIN tags t ON t.id=family.ancestor LEFT JOIN tag_options o ON o.tag_id=t.id WHERE mt.media_id=m.id AND (t.name=? COLLATE NOCASE OR (t.english_name<>'' AND t.english_name=? COLLATE NOCASE) OR EXISTS(SELECT 1 FROM json_each(COALESCE(o.aliases_json,'[]')) a WHERE a.value=? COLLATE NOCASE)))`;
-  for (const name of options.fileNames ?? []) { const phonetic=/^[a-z\d ._-]+$/iu.test(name) && /[a-z]/iu.test(name);clauses.push(phonetic?`(${fileName} LIKE ? ESCAPE '\\' OR lumina_matches(${fileName},?))`:`${fileName} LIKE ? ESCAPE '\\'`); parameters.push(like(name.trim()));if(phonetic)parameters.push(name.trim()); }
-  for (const name of options.excludeFileNames ?? []) { const phonetic=/^[a-z\d ._-]+$/iu.test(name) && /[a-z]/iu.test(name);clauses.push(phonetic?`NOT (${fileName} LIKE ? ESCAPE '\\' OR lumina_matches(${fileName},?))`:`${fileName} NOT LIKE ? ESCAPE '\\'`);parameters.push(like(name.trim()));if(phonetic)parameters.push(name.trim()); }
+  for (const name of options.fileNames ?? []) { const phonetic=locale!=='en' && (locale==='ja' || /^[a-z\d ._-]+$/iu.test(name) && /[a-z]/iu.test(name));clauses.push(phonetic?`(${fileName} LIKE ? ESCAPE '\\' OR ${phoneticMatch(fileName)})`:`${fileName} LIKE ? ESCAPE '\\'`); parameters.push(like(name.trim()));if(phonetic)parameters.push(name.trim()); }
+  for (const name of options.excludeFileNames ?? []) { const phonetic=locale!=='en' && (locale==='ja' || /^[a-z\d ._-]+$/iu.test(name) && /[a-z]/iu.test(name));clauses.push(phonetic?`NOT (${fileName} LIKE ? ESCAPE '\\' OR ${phoneticMatch(fileName)})`:`${fileName} NOT LIKE ? ESCAPE '\\'`);parameters.push(like(name.trim()));if(phonetic)parameters.push(name.trim()); }
   const extensions=[...new Set((options.extensions??[]).map(extension=>extension.trim().replace(/^\*?\./u,'').toLowerCase()))];
   if(extensions.length){clauses.push(`(${extensions.map(()=>`lower(substr(${fileName},-length(?)))=?`).join(' OR ')})`);for(const extension of extensions)parameters.push(`.${extension}`,`.${extension}`);}
   for (const name of options.tagNames ?? []) { clauses.push(tagMatch); parameters.push(name.trim(),name.trim(),name.trim()); }
@@ -193,7 +199,7 @@ function mediaSearchSql(db:LuminaDatabase,query: string, options: MediaSearchOpt
     const matchQuery = normalized.split(/\s+/u).map((token) => token.replace(/[^\p{L}\p{N}_]/gu,'')).filter(Boolean).map((token) => `"${token}"*`).join(' AND ');
     clauses.push(`(${fileName} LIKE ? ESCAPE '\\' OR EXISTS(SELECT 1 FROM media_tags mt JOIN tags t ON t.id=mt.tag_id LEFT JOIN tag_options o ON o.tag_id=t.id WHERE mt.media_id=m.id AND (t.name LIKE ? ESCAPE '\\' OR t.english_name LIKE ? ESCAPE '\\' OR EXISTS(SELECT 1 FROM json_each(COALESCE(o.aliases_json,'[]')) a WHERE a.value LIKE ? ESCAPE '\\'))) ${matchQuery ? 'OR m.id IN(SELECT media_id FROM media_fts WHERE media_fts MATCH ?)' : ''})`);
     parameters.push(like(normalized),like(normalized),like(normalized),like(normalized)); if (matchQuery) parameters.push(matchQuery);
-    if(/^[a-z\d ._-]+$/iu.test(normalized) && /[a-z]/iu.test(normalized)){const literal=clauses.pop()!;clauses.push(`(${literal} OR lumina_matches(${fileName},?) OR EXISTS(SELECT 1 FROM media_tags mt JOIN tags t ON t.id=mt.tag_id WHERE mt.media_id=m.id AND lumina_matches(t.name,?)))`);parameters.push(normalized,normalized);}
+    if(locale!=='en' && (locale==='ja' || /^[a-z\d ._-]+$/iu.test(normalized) && /[a-z]/iu.test(normalized))){const literal=clauses.pop()!;clauses.push(`(${literal} OR ${phoneticMatch(fileName)} OR EXISTS(SELECT 1 FROM media_tags mt JOIN tags t ON t.id=mt.tag_id LEFT JOIN tag_options o ON o.tag_id=t.id WHERE mt.media_id=m.id AND (${phoneticMatch('t.name')} OR ${phoneticMatch('t.english_name')} OR EXISTS(SELECT 1 FROM json_each(COALESCE(o.aliases_json,'[]')) a WHERE ${phoneticMatch('a.value')}))))`);parameters.push(normalized,normalized,normalized,normalized);}
   }
   if (options.kind) { clauses.push('m.kind=?'); parameters.push(options.kind); }
   if(options.hiddenOnly)clauses.push(`(h.media_id IS NOT NULL OR ${tagHiddenSql()})`);
@@ -355,7 +361,7 @@ export function setAlbumCover(db: LuminaDatabase, albumId: string, mediaId: stri
 export function findTag(db:LuminaDatabase,name:string):{id:string;name:string;englishName:string}|undefined{
   const direct=db.prepare('SELECT id,name,english_name AS englishName FROM tags WHERE name=? COLLATE NOCASE').get(name.trim()) as {id:string;name:string;englishName:string}|undefined;if(direct)return direct;
   const rows=db.prepare("SELECT t.id,t.name,t.english_name AS englishName FROM tags t LEFT JOIN tag_options o ON o.tag_id=t.id WHERE (t.english_name<>'' AND t.english_name=? COLLATE NOCASE) OR EXISTS(SELECT 1 FROM json_each(COALESCE(o.aliases_json,'[]')) a WHERE a.value=? COLLATE NOCASE)").all(name.trim(),name.trim()) as {id:string;name:string;englishName:string}[];
-  if(rows.length>1)throw new Error('多个标签使用了该英文名或别名，请选择具体标签');return rows[0];
+  if(rows.length>1)throw new Error('多个标签使用了该别名，请选择具体标签');return rows[0];
 }
 export function createTag(db: LuminaDatabase, name: string, source:'user'|'directory'='user'): string {
   const original=name.trim();let candidate=original,canonical=findTag(db,candidate),suffix=1;
@@ -377,7 +383,7 @@ export function deleteTag(db: LuminaDatabase, tagId: string, deleteChildren=fals
     if(directoryTagInUse(db,tagId))throw new Error('该标签用于目录规则，请先在目录设置中移除规则');
     if(!db.prepare('SELECT id FROM tags WHERE id=?').get(tagId))throw new Error('标签不存在');
     const tree=tagHierarchy(db),targets=deleteChildren?exclusiveTagBranch(db,tagId):[tagId];if(targets.some(id=>directoryTagInUse(db,id)))throw new Error('子标签用于目录规则，请先解除目录规则');
-    if(!deleteChildren){const parents=tree.find(row=>row.id===tagId)!.parentIds;for(const child of tree.filter(row=>row.parentIds.includes(tagId)))setTagParents(db,child.id,[...child.parentIds.filter(parent=>parent!==tagId),...parents]);}
+    if(!deleteChildren){const node=tree.find(row=>row.id===tagId)!,parents=node.parentIds;for(const child of tree.filter(row=>row.parentIds.includes(tagId))){const next=[...child.parentIds.filter(parent=>parent!==tagId),...parents];setTagParents(db,child.id,next);if(node.rootReference&&next.length)db.prepare('UPDATE tags SET root_reference=1 WHERE id=?').run(child.id);}}
     for (const row of db.prepare('SELECT album_id,rule_json FROM smart_albums').all() as { album_id: string; rule_json: string }[]) {
       const rule = JSON.parse(row.rule_json) as import('@lumina/contracts').SmartRule;
       rule.tags = rule.tags.filter((id) => !targets.includes(id)); rule.notTags = rule.notTags.filter((id) => !targets.includes(id));

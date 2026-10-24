@@ -1,3 +1,4 @@
+import {t} from './i18n';
 import {useLayoutEffect,useMemo,useRef,useState} from 'react';
 import {ActionButton} from './ActionControls';
 import {createPortal} from 'react-dom';
@@ -18,7 +19,7 @@ export function AlbumBreadcrumbs({albums,activeId,onNavigate}:{albums:Ancestor[]
   fit();const observer=new ResizeObserver(fit);observer.observe(node);return()=>observer.disconnect();
  },[trail]);
  const shown=trail.slice(-count),hidden=trail.slice(0,-shown.length);
- return <nav ref={nav} className="album-breadcrumbs" aria-label="相册路径" title={trail.map(item=>item.name).join(' / ')}>
+ return <nav ref={nav} className="album-breadcrumbs" aria-label={t("相册路径")} title={trail.map(item=>item.name).join(' / ')}>
   {hidden.length>0&&<><AncestorMenu items={hidden} onNavigate={onNavigate}/><span aria-hidden="true">/</span></>}
   {shown.map((item,index)=><span className="album-breadcrumb-part" key={item.id}>{index>0&&<span aria-hidden="true">/</span>}{item.id===activeId?<span className="album-breadcrumb-current" aria-current="page" title={item.name}>{item.name}</span>:<ActionButton className="ghost" title={item.name} onClick={()=>onNavigate(item.id)}>{item.name}</ActionButton>}</span>)}
  </nav>;
@@ -36,7 +37,7 @@ function AncestorMenu({items,onNavigate}:{items:Ancestor[];onNavigate:(id:string
   const dismiss=()=>setOpen(false),scrolled=(event:Event)=>{if(event.target instanceof Node&&popup.contains(event.target))return;dismiss();};window.addEventListener('resize',dismiss);window.addEventListener('scroll',scrolled,true);
   return()=>{window.removeEventListener('resize',dismiss);window.removeEventListener('scroll',scrolled,true);};
  },[open]);
- return <><ActionButton ref={trigger} className="ghost album-ancestor-trigger" aria-label="前面的相册层级" aria-haspopup="menu" aria-expanded={open} onClick={()=>setOpen(value=>!value)}>…⌄</ActionButton>{open&&createPortal(<div ref={menu} className="album-ancestor-menu" role="menu" aria-label="前面的相册层级" onKeyDown={event=>{
+ return <><ActionButton ref={trigger} className="ghost album-ancestor-trigger" aria-label={t("前面的相册层级")} aria-haspopup="menu" aria-expanded={open} onClick={()=>setOpen(value=>!value)}>…⌄</ActionButton>{open&&createPortal(<div ref={menu} className="album-ancestor-menu" role="menu" aria-label={t("前面的相册层级")} onKeyDown={event=>{
   const buttons=Array.from(menu.current!.querySelectorAll('button')),index=buttons.indexOf(event.target as HTMLButtonElement);
   if(event.key==='Escape'){event.preventDefault();event.stopPropagation();setOpen(false);trigger.current?.focus();}
   if(event.key==='ArrowDown'||event.key==='ArrowUp'){event.preventDefault();buttons[(index+(event.key==='ArrowUp'?-1:1)+buttons.length)%buttons.length]?.focus();}

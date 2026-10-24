@@ -8,6 +8,8 @@ files:
   - dist/**
   - package.json
 asarUnpack:
+  - dist/japanese-worker.cjs
+  - dist/japanese-dict/**
   - node_modules/better-sqlite3/**
   - node_modules/@img/**
   - node_modules/sharp/**
@@ -19,6 +21,8 @@ win:
       arch:
         - x64
 nsis:
+  displayLanguageSelector: true
+  include: assets/installer-language.nsh
   runAfterFinish: false
   oneClick: false
   perMachine: false
@@ -26,8 +30,10 @@ nsis:
   deleteAppDataOnUninstall: false
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: 光匣 Lumina
+  # installer-language.nsh selects the localized name at install time.
+  shortcutName: Lumina
   installerLanguages:
     - zh_CN
     - en_US
+    - ja_JP
 npmRebuild: true

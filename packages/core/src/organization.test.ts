@@ -441,10 +441,11 @@ describe('M2 organization workflows', () => {
 
   it('extracts GPS, builds offline place groups and undoes auto organization', async () => {
     expect(nearbyPlace(39.9042,116.4074)?.country).toBe('CN');
-    const { id } = await command({ type: 'jobs.start', kind: 'geo' }); const job = await finished(id); expect(job.status).toBe('completed');
+    const { id } = await command({ type: 'jobs.start', kind: 'geo',geoTags:true,geoAlbums:true,geoLevel:'both' }); const job = await finished(id); expect(job.status).toBe('completed');
     const places = await command({ type: 'geo.places' }); expect(places.countries).toBe(1); expect(places.cities).toBeGreaterThan(0); expect(places.noLocation).toBe(1);
-    expect((await command({ type: 'albums.list' })).some((album: any) => album.kind === 'smart')).toBe(true);
-    await command({ type: 'geo.undo', id: job.geoRunId }); expect((await command({ type: 'geo.places' })).cities).toBe(0);
+    expect(await command({ type: 'albums.list' })).toHaveLength(0);
+    expect(job.geoRunId).toBeUndefined(); expect((await command({ type: 'geo.places' })).cities).toBeGreaterThan(0);
+    expect(await command({type:'albums.list'})).toHaveLength(0);
     expect(await command({ type: 'media.list' })).toHaveLength(3);
   });
 
@@ -503,19 +504,12 @@ describe('M2 organization workflows', () => {
     expect((await command({type:'trash.restore',mediaIds:[item.id]}))[0].ok).toBe(true);
   });
 
-  it('preserves subsequent manual changes when undoing geographic organization', async () => {
-    const {id}=await command({type:'jobs.start',kind:'geo'});const job=await finished(id);
-    const item=media.find((item)=>item.absolutePath.endsWith(`${path.sep}b.jpg`));
-    const tag=(await command({type:'media.tags',id:item.id})).find((tag:any)=>tag.name.startsWith('地点·'));
-    await command({type:'media.addTag',id:item.id,tagName:tag.name});
-    await command({type:'media.attributes',id:item.id,city:'我的地点',favorite:true,rating:4});
-    const autoAlbum=(await command({type:'albums.list'}))[0];
-    const preview=await command({type:'smart.preview',id:autoAlbum.id,rule:autoAlbum.rule});
-    await command({type:'smart.save',id:autoAlbum.id,name:'已编辑的地点相册',rule:autoAlbum.rule,revision:preview.revision});
-    await command({type:'geo.undo',id:job.geoRunId});
+  it('preserves manual places and existing organization when completing footprints', async () => {
+    const item=media[0];await command({type:'media.addTag',id:item.id,tagName:'手动地点'});await command({type:'media.attributes',id:item.id,city:'我的地点',favorite:true,rating:4});
+    const album=await command({type:'albums.edit',name:'我的相册'});await command({type:'albums.addMedia',id:album.id,mediaIds:[item.id]});
+    const {id}=await command({type:'jobs.start',kind:'geo'});expect((await finished(id)).status).toBe('completed');
     expect(rawMedia(db,item.id)?.metadata).toMatchObject({city:'我的地点',favorite:true,rating:4});
-    expect((await command({type:'media.tags',id:item.id})).some((candidate:any)=>candidate.id===tag.id)).toBe(true);
-    expect((await command({type:'albums.list'})).some((album:any)=>album.id===autoAlbum.id)).toBe(true);
+    expect((await command({type:'media.tags',id:item.id})).map((tag:any)=>tag.name)).toEqual(['手动地点']);expect((await command({type:'albums.list'})).map((row:any)=>row.id)).toEqual([album.id]);
   });
 
   it('searches a large result without a SQL parameter overflow and pages stably', async () => {

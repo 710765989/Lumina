@@ -3,10 +3,10 @@ import { mkdir, stat, readFile, writeFile, copyFile, unlink } from 'node:fs/prom
 import { randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
 import sharp from 'sharp';
-import { settings,tagHiddenSql,rootMediaIds,rootContainsMedia,albumMembers, createAlbum, createTag, addMediaToAlbum, rawMedia, visibleSql, mediaColumns, readMediaRows, updateMetadata, type LuminaDatabase, type OrganizedMedia } from '@lumina/storage';
+import { settings,tagHiddenSql,rootMediaIds,rootContainsMedia,albumMembers, rawMedia, visibleSql, mediaColumns, readMediaRows, updateMetadata, type LuminaDatabase, type OrganizedMedia } from '@lumina/storage';
 import type { OrganizationCommand } from '@lumina/contracts';
 import { copyExclusive, hashFile } from './file-operations.js';
-import { extractMetadata, nearbyPlace } from './geography.js';
+import { extractMetadata, nearbyPlace,geographicKey,hasGeographicMetadata,needsGeographicOrganization } from './geography.js';
 import { runFfmpeg } from './thumbnail.js';
 import { imageFeature, similarityAlgorithm } from './similarity.js';
 import { addTagToMedia,removeTagFromMedia,refreshMediaStats,reconcileAllCovers,reconcileCover,tagHierarchy,findTag } from '@lumina/storage';
@@ -53,10 +53,11 @@ export class OrganizationJobs {
       selected = candidates.filter((item) => counts.get(item.sizeBytes)! > 1);
     }
     if (options.kind === 'geo' || options.kind === 'similar') selected = candidates.filter((item) => item.kind === 'photo');
+    if(options.kind==='geo')selected=selected.filter(item=>needsGeographicOrganization(item));
     const id = randomUUID();
     let tagPath:string|undefined;
     if(options.kind==='tags' && options.tagName){const canonical=findTag(this.db,options.tagName);tagPath=canonical?tagHierarchy(this.db).find((tag)=>tag.id===canonical.id)?.path:options.tagName;}
-    const payload: Payload = {options,context,info:{snapshotVersion:1,tagPath,rootPath:options.rootId?(this.db.prepare('SELECT absolute_path AS path FROM library_roots WHERE id=?').get(options.rootId) as {path:string})?.path:undefined,scopeCount:candidates.length,selectedCount:selected.length},...(options.kind==='geo'?{geoRunId:randomUUID()}:{})};
+    const payload: Payload = {options,context,info:{snapshotVersion:1,tagPath,rootPath:options.rootId?(this.db.prepare('SELECT absolute_path AS path FROM library_roots WHERE id=?').get(options.rootId) as {path:string})?.path:undefined,scopeCount:candidates.length,selectedCount:selected.length}};
     this.db.transaction(() => {
       this.db.prepare("INSERT INTO tasks(id,kind,status,total,payload_json) VALUES(?,?,'queued',?,?)").run(id, options.kind, selected.length, JSON.stringify(payload));
       const insert = this.db.prepare("INSERT OR IGNORE INTO job_items(task_id,media_id,file_path,ordinal,size_bytes,fingerprint) VALUES(?,?,?,?,?,?)");
@@ -179,7 +180,7 @@ export class OrganizationJobs {
             }
             const content=this.db.prepare('SELECT 1 FROM media_details WHERE media_id=? AND hash_fingerprint=? AND content_hash IS NOT NULL').get(media.id,media.fingerprint);
             if(!content){const hash=await hashFile(media.absolutePath,abort.signal);const after=await stat(media.absolutePath);if(before.size!==after.size || before.mtimeMs!==after.mtimeMs || before.ino!==after.ino)throw new Error('文件正在修改，请稍后重试');this.db.prepare('INSERT INTO media_details(media_id,content_hash,hash_fingerprint) VALUES(?,?,?) ON CONFLICT(media_id) DO UPDATE SET content_hash=excluded.content_hash,hash_fingerprint=excluded.hash_fingerprint').run(media.id,hash,media.fingerprint);}
-          } else if (payload.options.kind === 'geo') await this.geocode(media, payload);
+          } else if (payload.options.kind === 'geo') await this.geocode(media);
           else item.output = await this.export(media, payload.options,item.ordinal);
           item.status = 'completed'; delete item.error;
         } catch (error) { if(this.interruptedSync.has(id))return;if(abort.signal.aborted)break;item.status = 'failed'; item.error = error instanceof Error ? error.message : String(error); }
@@ -191,7 +192,8 @@ export class OrganizationJobs {
         // A zero-delay Windows timer can cost a full timer tick per file. The
         // attribute helper already yields for I/O; setImmediate keeps controls
         // responsive without adding that artificial delay to every attribute.
-        if(payload.options.kind==='visibility'&&payload.options.syncOnly)await new Promise<void>(resolve=>setImmediate(resolve));
+        if(payload.options.kind==='geo') {if(item.ordinal%8===0)await new Promise<void>(resolve=>setImmediate(resolve));}
+        else if(payload.options.kind==='visibility'&&payload.options.syncOnly)await new Promise<void>(resolve=>setImmediate(resolve));
         else await new Promise((resolve) => setTimeout(resolve, 0));
       }
       const state = this.db.prepare('SELECT status FROM tasks WHERE id=?').get(id) as { status: string };
@@ -201,35 +203,21 @@ export class OrganizationJobs {
       }
     } finally { this.aborts.delete(id);this.phases.delete(id);if(this.interruptedSync.delete(id)){this.active.delete(id);return;}if(fileKinds.includes(payload.options.kind)&&payload.options.kind!=='visibility'){refreshMediaStats(this.db);reconcileAllCovers(this.db);}else if(payload.options.kind==='tags'){if(tagVisibilityChanged)refreshMediaStats(this.db);for(const row of this.db.prepare('SELECT id FROM albums WHERE manual_cover_media_id IN(SELECT media_id FROM job_items WHERE task_id=?)').all(id) as {id:string}[])reconcileCover(this.db,row.id);} this.active.delete(id); this.notify(); }
   }
-  private async geocode(media: OrganizedMedia, payload: Payload) {
-    const extracted = await extractMetadata(media.absolutePath);
-    const coordinate = Number.isFinite(extracted.latitude) && Number.isFinite(extracted.longitude);
-    const nearby = coordinate ? nearbyPlace(extracted.latitude!, extracted.longitude!) : null;
-    const previous = media.metadata;
+  private async geocode(media: OrganizedMedia) {
+    if(!needsGeographicOrganization(media))return;
+    let previous = media.metadata;
+    // Scans already read EXIF, including the absence of GPS. Only legacy rows
+    // without any extracted metadata need a one-time source-file fallback.
+    const extracted:Record<string,any> = hasGeographicMetadata(previous) ? {} : await extractMetadata(media.absolutePath);
+    const current=rawMedia(this.db,media.id);if(!current||current.fingerprint!==media.fingerprint)throw new Error('照片在处理中已变化，请刷新后重试');previous=current.metadata;
+    const metadata={...previous,...extracted};
+    const coordinate=Number.isFinite(metadata.latitude)&&Number.isFinite(metadata.longitude);
+    const nearby=coordinate?nearbyPlace(metadata.latitude,metadata.longitude):null;
     // Preserve user corrections and all favorite/rating/name fields.
-    const next = { ...extracted, ...(nearby && previous.placeSource !== 'user' ? { country: nearby.country, region: nearby.region, city: nearby.city, placeSource: nearby.placeSource, distanceKm: nearby.distanceKm } : {}) };
-    this.db.transaction(() => {
-      const change: any = { id: media.id, previous, applied: next, tagIds: [] as string[], albumIds: [] as string[] };
-      updateMetadata(this.db, media.id, next);
-      for (const place of nearby ? [nearby.country, nearby.city] : []) {
-        const name = `地点·${place}`;
-        const existed = this.db.prepare('SELECT id FROM tags WHERE name=?').get(name) as { id: string } | undefined;
-        const tagId = existed?.id ?? createTag(this.db, name);
-        if (!existed) this.db.prepare("INSERT INTO tag_options(tag_id,source) VALUES(?,'geo') ON CONFLICT(tag_id) DO UPDATE SET source='geo'").run(tagId);
-        if (!this.db.prepare('SELECT 1 FROM media_tags WHERE media_id=? AND tag_id=?').get(media.id, tagId)) {
-          this.db.prepare('INSERT INTO media_tags(media_id,tag_id) VALUES(?,?)').run(media.id, tagId); change.tagIds.push(tagId);
-          this.db.prepare('INSERT INTO media_tag_origins(media_id,tag_id,source) VALUES(?,?,?)').run(media.id,tagId,payload.geoRunId!);
-        }
-        let album = this.db.prepare('SELECT a.id FROM albums a JOIN smart_albums s ON s.album_id=a.id WHERE a.name=? AND s.source=\'geo\'').get(name) as { id: string } | undefined;
-        if (!album && !this.db.prepare('SELECT id FROM albums WHERE name=? COLLATE NOCASE').get(name)) {
-          album = createAlbum(this.db, name, '离线地名整理自动生成');
-          this.db.prepare("INSERT INTO smart_albums(album_id,rule_json,source) VALUES(?,?,'geo')").run(album.id, JSON.stringify({ relation: 'AND', tags: [tagId], notTags: [], excludedMediaIds: [] }));
-          change.albumIds.push(album.id);
-        }
-      }
-      this.db.prepare('INSERT INTO geo_changes(run_id,media_id,change_json) VALUES(?,?,?) ON CONFLICT(run_id,media_id) DO UPDATE SET change_json=excluded.change_json').run(payload.geoRunId!,media.id,JSON.stringify(change));
-    })();
+    const next = { ...extracted,geoMetadataVersion:1,geoOrganizationKey:geographicKey({...media,metadata}), ...(nearby && previous.placeSource !== 'user' ? { country: nearby.country, region: nearby.region, city: nearby.city, placeSource: nearby.placeSource, distanceKm: nearby.distanceKm } : {}) };
+    updateMetadata(this.db,media.id,next);
   }
+
   private async export(media: OrganizedMedia, options: Start, ordinal: number) {
     const time = new Date(media.capturedAtMs ?? media.modifiedAtMs); const pad=(value:number)=>String(value).padStart(2,'0');
     const date = `${time.getFullYear()}-${pad(time.getMonth()+1)}-${pad(time.getDate())}`;

@@ -4,7 +4,7 @@ import { matchesSearch } from '@lumina/contracts';
 import {initializeVisibility} from './visibility.js';
 import {migrateDirectoryTagTypes} from './directory-tag-migration.js';
 
-export const schemaVersion = 11;
+export const schemaVersion = 12;
 
 const schema = `
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -94,6 +94,7 @@ export type LuminaDatabase = Database.Database;
 export function openDatabase(filename: string): LuminaDatabase {
   const db = new Database(filename);
   db.function('lumina_matches',{deterministic:true},(text,query)=>matchesSearch(String(text??''),String(query??''))?1:0);
+  db.function('lumina_matches_locale',(text,query,language)=>matchesSearch(String(text??''),String(query??''),language==='en'?'en':language==='ja'?'ja':'zh-CN')?1:0);
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
   db.exec(schema);
@@ -113,6 +114,7 @@ export function openDatabase(filename: string): LuminaDatabase {
     db.exec('INSERT OR IGNORE INTO tag_edges(parent_id,child_id) SELECT parent_id,id FROM tags WHERE parent_id IS NOT NULL;UPDATE tags SET parent_id=NULL');
   })();
   if(!(db.prepare('PRAGMA table_info(tags)').all() as {name:string}[]).some(column=>column.name==='english_name'))db.exec("ALTER TABLE tags ADD COLUMN english_name TEXT NOT NULL DEFAULT ''");
+  if(!(db.prepare('PRAGMA table_info(tags)').all() as {name:string}[]).some(column=>column.name==='root_reference'))db.exec('ALTER TABLE tags ADD COLUMN root_reference INTEGER NOT NULL DEFAULT 0');
   db.exec("UPDATE tags SET english_name=name WHERE english_name='' AND name NOT GLOB '*[一-龥]*'");
   if (!mediaColumns.some((column) => column.name === 'captured_at_ms')) db.exec('ALTER TABLE media ADD COLUMN captured_at_ms INTEGER');
   if (!mediaColumns.some((column) => column.name === 'file_name')) {
@@ -231,5 +233,5 @@ export * from './tag-hierarchy.js';
 
 export * from './directory-rules.js';
 export * from './album-management.js';
-export {mediaOrder} from './media-sort.js';
+export {mediaOrder,mediaSortValue} from './media-sort.js';
 export * from './visibility.js';

@@ -1,3 +1,4 @@
+import {t,translateMessage} from './i18n';
 import {useEffect,useRef,useState} from 'react';
 import {ActionButton} from './ActionControls';
 import {bytesText} from './media-types';
@@ -20,5 +21,5 @@ export function FirstLibraryCache({libraryPath,disabled,onChange}:{libraryPath:s
  },[libraryPath]);
  useEffect(()=>{latest.current({ready:Boolean(settings&&(!settings.setupRequired||!checking&&space!==undefined&&!error)),directory:settings?.setupRequired&&space!==undefined&&!error?directory:undefined});},[settings,directory,space,checking,error]);
  if(settings&&!settings.setupRequired)return null;
- return <section className="first-library-cache" aria-label="首次设置缓存目录"><div><strong>确认缓存目录</strong><p>先确定缩略图和预览的保存位置，再开始扫描。后续图库沿用此位置，可在常规设置中迁移。</p></div><div className="import-path-row"><input aria-label="首次媒体缓存路径" readOnly value={directory} title={directory} placeholder="正在读取缓存位置…"/><ActionButton type="button" className="ghost" disabled={disabled||checking||!settings} onClick={async()=>{try{const selected=await window.lumina.pickFolder();if(selected)await verify(selected);}catch(reason){setError(userErrorMessage(reason));}}}>选择缓存目录</ActionButton></div>{checking||!settings&&!error?<small role="status">正在检查缓存目录…</small>:space!==undefined&&!error?<small role="status">磁盘可用空间：{bytesText(space)} · 确认添加后开始使用此位置</small>:null}{error&&<p className="form-error" role="alert">{error}</p>}</section>;
+ return <section className="first-library-cache" aria-label={t("首次设置缓存目录")}><div><strong>{t("确认缓存目录")}</strong><p>{t("先确定缩略图和预览的保存位置，再开始扫描。后续图库沿用此位置，可在常规设置中迁移。")}</p></div><div className="import-path-row"><input aria-label={t("首次媒体缓存路径")} readOnly value={directory} title={directory} placeholder={t("正在读取缓存位置…")}/><ActionButton type="button" className="ghost" disabled={disabled||checking||!settings} onClick={async()=>{try{const selected=await window.lumina.pickFolder();if(selected)await verify(selected);}catch(reason){setError(userErrorMessage(reason));}}}>{t("选择缓存目录")}</ActionButton></div>{checking||!settings&&!error?<small role="status">{t("正在检查缓存目录…")}</small>:space!==undefined&&!error?<small role="status">{t("磁盘可用空间：")}{bytesText(space)}{t("· 确认添加后开始使用此位置")}</small>:null}{error&&<p className="form-error" role="alert">{translateMessage(error)}</p>}</section>;
 }

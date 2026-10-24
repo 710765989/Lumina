@@ -1,3 +1,4 @@
+import {t} from './i18n';
 import {ActionButton} from './ActionControls';
 import {useLayoutEffect,useRef,type KeyboardEvent} from 'react';
 import {useDismissableLayer} from './useDismissableLayer';
@@ -14,6 +15,6 @@ export function ViewerContextMenu({x,y,actions,onClose}:{x:number;y:number;actio
     if(event.key==='ArrowRight'){event.preventDefault();target.parentElement?.querySelector<HTMLButtonElement>('.viewer-submenu button:not(:disabled)')?.focus();}
     if(event.key==='ArrowLeft'){event.preventDefault();level.parentElement?.querySelector<HTMLButtonElement>(':scope>button')?.focus();}
   }
-  function entries(rows:ViewerMenuAction[]){return rows.map(action=>action.children?<div className="viewer-menu-group" key={action.label} onMouseEnter={event=>{const menu=event.currentTarget.querySelector<HTMLElement>('.viewer-submenu');if(menu){menu.style.top='0px';const rect=menu.getBoundingClientRect();if(rect.bottom>innerHeight-8)menu.style.top=`${innerHeight-8-rect.bottom}px`;}}}><ActionButton type="button" role="menuitem" aria-label={action.label} aria-haspopup="menu">{action.label}<span>›</span></ActionButton><div className="viewer-submenu viewer-menu-level" role="menu">{entries(action.children)}</div></div>:<ActionButton type="button" role="menuitem" key={action.label} disabled={action.disabled} className={action.danger?'danger':''} onClick={()=>{onClose();action.run?.();}}>{action.label}</ActionButton>);}
-  return <div ref={root} className="viewer-context-menu viewer-menu-level" role="menu" aria-label="媒体浏览菜单" style={{left:x,top:y}} onKeyDown={keyboard} onContextMenu={event=>{event.preventDefault();event.stopPropagation();}}>{entries(actions)}</div>;
+  function entries(rows:ViewerMenuAction[]){return rows.map(action=>action.children?<div className="viewer-menu-group" key={action.label} onMouseEnter={event=>{const menu=event.currentTarget.querySelector<HTMLElement>('.viewer-submenu');if(menu){menu.style.top='0px';const rect=menu.getBoundingClientRect();if(rect.bottom>innerHeight-8)menu.style.top=`${innerHeight-8-rect.bottom}px`;}}}><ActionButton type="button" role="menuitem" aria-label={t(action.label)} aria-haspopup="menu">{t(action.label)}<span>›</span></ActionButton><div className="viewer-submenu viewer-menu-level" role="menu">{entries(action.children)}</div></div>:<ActionButton type="button" role="menuitem" key={action.label} disabled={action.disabled} className={action.danger?'danger':''} onClick={()=>{onClose();action.run?.();}}>{t(action.label)}</ActionButton>);}
+  return <div ref={root} className="viewer-context-menu viewer-menu-level" role="menu" aria-label={t("媒体浏览菜单")} style={{left:x,top:y}} onKeyDown={keyboard} onContextMenu={event=>{event.preventDefault();event.stopPropagation();}}>{entries(actions)}</div>;
 }

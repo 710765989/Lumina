@@ -1,4 +1,5 @@
 import {setAlbumParent} from './album-management.js';
+import {assertSameTagType} from './tag-types.js';
 import {tagHiddenSql} from './visibility.js';
 import {directoryTagInUse} from './directory-rules.js';
 import {mediaOrder,type MediaSortBy} from './media-sort.js';
@@ -181,6 +182,7 @@ export function tagDetails(db: LuminaDatabase) {
 }
 export function mergePreview(db: LuminaDatabase, source: string, target: string) {
   if (source === target) throw new Error('请选择两个不同的标签');
+  assertSameTagType(db,source,[target],'merge');
   if(descendantTagIds(db,source).includes(target))throw new Error('不能将父标签合并到其子标签');
   for (const id of [source, target]) if (!db.prepare('SELECT id FROM tags WHERE id=?').get(id)) throw new Error('标签不存在');
   const albums = (db.prepare('SELECT album_id,rule_json FROM smart_albums').all() as { album_id: string; rule_json: string }[])
@@ -197,8 +199,8 @@ export function mergePreview(db: LuminaDatabase, source: string, target: string)
 }
 export function mergeTags(db: LuminaDatabase, source: string, target: string, revision: string) {
   return db.transaction(() => {
-    if(directoryTagInUse(db,source) || directoryTagInUse(db,target))throw new Error('目录标签请先解除目录规则再合并');
     const preview = mergePreview(db, source, target);
+    if(directoryTagInUse(db,source) || directoryTagInUse(db,target))throw new Error('目录标签请先解除目录规则再合并');
     if (preview.revision !== revision) throw new Error('影响范围已变化，请重新预览');
     if (preview.conflicting.length) throw new Error('合并会产生包含/排除冲突，请先修改智能相册规则');
     db.prepare('INSERT OR IGNORE INTO media_tags(media_id,tag_id) SELECT media_id,? FROM media_tags WHERE tag_id=?').run(target, source);
@@ -218,6 +220,7 @@ export function mergeTags(db: LuminaDatabase, source: string, target: string, re
     if (sourceOptions?.blocked) db.prepare('INSERT INTO tag_options(tag_id,blocked) VALUES(?,1) ON CONFLICT(tag_id) DO UPDATE SET blocked=1').run(target);
     const tree=tagHierarchy(db),sourceNode=tree.find(row=>row.id===source)!,targetNode=tree.find(row=>row.id===target)!;
     setTagParents(db,target,[...targetNode.parentIds,...sourceNode.parentIds].filter(id=>id!==target && id!==source));
+    if(sourceNode.rootReference||targetNode.rootReference)db.prepare('UPDATE tags SET root_reference=1 WHERE id=?').run(target);
     for(const row of tree.filter(row=>row.parentIds.includes(source)))setTagParents(db,row.id,[...row.parentIds.filter(id=>id!==source),target]);
     db.prepare('DELETE FROM tags WHERE id=?').run(source);
     inheritTagAncestors(db);

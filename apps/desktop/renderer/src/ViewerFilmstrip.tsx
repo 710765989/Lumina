@@ -1,3 +1,4 @@
+import {t} from './i18n';
 import {FilmstripHoverPreview} from './FilmstripHoverPreview';
 import {ActionButton} from './ActionControls';
 import {useEffect,useLayoutEffect,useRef,useState,type RefObject} from 'react';
@@ -56,10 +57,10 @@ export function ViewerFilmstrip({ids,item,known,stripRef,onSelect,includeHidden=
     })().catch(()=>{if(valid)setFailed(true);});
     return()=>{valid=false;};
   },[ids,first,last,known,item,retry,includeHidden]);
-  return <><div ref={stripRef} className="filmstrip" aria-label="胶片条" onMouseLeave={closeHover} onScroll={event=>{closeHover();setPosition({left:event.currentTarget.scrollLeft,width:event.currentTarget.clientWidth});}}>
+  return <><div ref={stripRef} className="filmstrip" aria-label={t("胶片条")} onMouseLeave={closeHover} onScroll={event=>{closeHover();setPosition({left:event.currentTarget.scrollLeft,width:event.currentTarget.clientWidth});}}>
     <div className="filmstrip-canvas" style={{width:ids.length*STEP,minWidth:'100%'}}>
-      {visible.map((id,offset)=>{const media=records.get(id),name=media?mediaName(media):`第 ${first+offset+1} 项`;return <ActionButton type="button" key={id} data-film-index={first+offset} aria-label={name} title={media?`${name}\n${tags[id]?.length?'标签：'+tags[id].map(tag=>tag.name).join(' · '):'暂无标签'}\n文件大小：${bytesText(media.sizeBytes)}`:name} aria-current={id===item.id?'true':undefined} className={id===item.id?'active':''} onMouseEnter={event=>showHover(media,event.currentTarget)} onMouseLeave={closeHover} onFocus={event=>showHover(media,event.currentTarget)} onBlur={closeHover} style={{left:(first+offset)*STEP}} onClick={()=>{closeHover();onSelect(first+offset);}}>{media?<img src={window.lumina.mediaUrl('thumbnail',id)+'?v='+encodeURIComponent(media.fingerprint??media.modifiedAtMs)} alt={name} loading="lazy" onError={event=>{event.currentTarget.style.visibility='hidden';}}/>:<span aria-label="正在加载缩略图">·</span>}</ActionButton>;})}
+      {visible.map((id,offset)=>{const media=records.get(id),name=media?mediaName(media):t("第 {0} 项", [first+offset+1]);return <ActionButton type="button" key={id} data-film-index={first+offset} aria-label={name} title={media?t("{0}\n{1}\n文件大小：{2}", [name, tags[id]?.length?t("标签：")+tags[id].map(tag=>tag.name).join(' · '):t("暂无标签"), bytesText(media.sizeBytes)]):name} aria-current={id===item.id?'true':undefined} className={id===item.id?'active':''} onMouseEnter={event=>showHover(media,event.currentTarget)} onMouseLeave={closeHover} onFocus={event=>showHover(media,event.currentTarget)} onBlur={closeHover} style={{left:(first+offset)*STEP}} onClick={()=>{closeHover();onSelect(first+offset);}}>{media?<img src={window.lumina.mediaUrl('thumbnail',id)+'?v='+encodeURIComponent(media.fingerprint??media.modifiedAtMs)} alt={name} loading="lazy" onError={event=>{event.currentTarget.style.visibility='hidden';}}/>:<span aria-label={t("正在加载缩略图")}>·</span>}</ActionButton>;})}
     </div>
-    {failed && <ActionButton className="filmstrip-retry" onClick={()=>setRetry(value=>value+1)}>胶片加载失败 · 重试</ActionButton>}
+    {failed && <ActionButton className="filmstrip-retry" onClick={()=>setRetry(value=>value+1)}>{t("胶片加载失败 · 重试")}</ActionButton>}
   </div>{hover&&<FilmstripHoverPreview key={hover.media.id} {...hover}/>}</>;
 }

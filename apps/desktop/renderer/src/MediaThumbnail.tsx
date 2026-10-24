@@ -1,3 +1,4 @@
+import {t} from './i18n';
 import {useMediaActivity} from './MediaActivity';
 import {ActionButton} from './ActionControls';
 import { useCallback,useEffect, useRef, useState } from 'react';
@@ -40,7 +41,7 @@ export function MediaThumbnail({ id, kind, source,preview=false,previewPath='',a
       const url = await window.lumina.thumbnail(id,force);
       await new Promise<void>((resolve, reject) => {
         const image = new Image();
-        image.onload = () => resolve(); image.onerror = () => reject(new Error('缩略图解码失败')); image.src = url;
+        image.onload = () => resolve(); image.onerror = () => reject(new Error("缩略图解码失败")); image.src = url;
       });
       if (mounted.current) { setReplacement(url); setFailed(false); }
     } catch { /* Keep a retry action when the original is unavailable. */ }
@@ -48,8 +49,8 @@ export function MediaThumbnail({ id, kind, source,preview=false,previewPath='',a
   }
 
   const url = replacement ?? source;
-  if (failed || !url) return <div className="thumbnail-fallback"><span>{kind === 'video' ? '▶' : '✦'}</span><ActionButton type="button" className="thumbnail-retry" title="重试缩略图" disabled={retrying} onClick={(event) => { event.stopPropagation(); return retry(true); }} onDoubleClick={(event) => event.stopPropagation()}>{retrying ? '正在重试…' : failed ? '缩略图加载失败 · 重试' : '加载缩略图'}</ActionButton></div>;
-  return <><img draggable={false} ref={image} src={active?url:undefined} alt="" onError={() => { if(!active)return;setFailed(true); if (!attempted.current) void retry(); }} />{kind==='video' && <span className="video-play-badge" aria-label="视频">▶</span>}{active && animated && animation.visible && (animation.automatic || preview) && (animation.automatic&&!automaticFailed?<AutomaticPhoto key={animationKey} id={id} width={details.width!} height={details.height!} maxBytes={limits.maxBytes===0?0:sizeBytes} onError={failAutomatic}/>:<AnimatedPhoto key={id} id={id}/>)}{active && preview && kind==='video' && <HoverVideo key={id} id={id} path={previewPath}/>}</>;
+  if (failed || !url) return <div className="thumbnail-fallback"><span>{kind === 'video' ? '▶' : '✦'}</span><ActionButton type="button" className="thumbnail-retry" title={t("重试缩略图")} disabled={retrying} onClick={(event) => { event.stopPropagation(); return retry(true); }} onDoubleClick={(event) => event.stopPropagation()}>{retrying ? t("正在重试…") : failed ? t("缩略图加载失败 · 重试") : t("加载缩略图")}</ActionButton></div>;
+  return <><img draggable={false} ref={image} src={active?url:undefined} alt="" onError={() => { if(!active)return;setFailed(true); if (!attempted.current) void retry(); }} />{kind==='video' && <span className="video-play-badge" aria-label={t("视频")}>▶</span>}{active && animated && animation.visible && (animation.automatic || preview) && (animation.automatic&&!automaticFailed?<AutomaticPhoto key={animationKey} id={id} width={details.width!} height={details.height!} maxBytes={limits.maxBytes===0?0:sizeBytes} onError={failAutomatic}/>:<AnimatedPhoto key={id} id={id}/>)}{active && preview && kind==='video' && <HoverVideo key={id} id={id} path={previewPath}/>}</>;
 }
 
 function AutomaticPhoto({id,width,height,maxBytes,onError}:{id:string;width:number;height:number;maxBytes:number;onError:()=>void}){

@@ -1,5 +1,12 @@
-export type TagNode={id:string;name:string;englishName?:string;parentId?:string|null;parentIds?:string[]};
+export type TagNode={id:string;name:string;englishName?:string;parentId?:string|null;parentIds?:string[];rootReference?:boolean};
 export function tagParents(tag:TagNode):string[]{return tag.parentIds??(tag.parentId?[tag.parentId]:[]);}
+export function tagReferenceChange(tag:TagNode,fromParentId:string|null,parentId:string|null,copy=false){
+ const parents=tagParents(tag),atRoot=!parents.length||Boolean(tag.rootReference);
+ if(fromParentId?!parents.includes(fromParentId):!atRoot)throw new Error('标签引用已变化，请刷新后重试');
+ const next=[...new Set([...(copy?parents:parents.filter(id=>id!==fromParentId)),...(parentId?[parentId]:[])])].sort();
+ const root=copy?atRoot||parentId===null:parentId===null||fromParentId!==null&&atRoot;
+ return {parentIds:next,rootReference:next.length>0&&root};
+}
 export function tagLabel(tag:{name:string;englishName?:string}):string{
   const english=tag.englishName?.trim();return english && english.toLocaleLowerCase()!==tag.name.trim().toLocaleLowerCase()?`${tag.name}（${english}）`:tag.name;
 }
@@ -22,7 +29,7 @@ export function tagDescendants(tags:TagNode[],id:string):Set<string>{
   const pending=[id];while(pending.length)for(const child of children.get(pending.pop()!)??[])if(!result.has(child)){result.add(child);pending.push(child);}return result;
 }
 export function tagOccurrences<T extends TagNode>(tags:T[]){
-  const children=new Map<string|null,T[]>();for(const tag of tags)for(const parent of tagParents(tag).length?tagParents(tag):[null]){const group=children.get(parent)??[];group.push(tag);children.set(parent,group);}
+  const children=new Map<string|null,T[]>();for(const tag of tags)for(const parent of [...tagParents(tag),...(!tagParents(tag).length||tag.rootReference?[null]:[])]){const group=children.get(parent)??[];group.push(tag);children.set(parent,group);}
   const result:Array<T&{parentId:string|null;path:string;pathIds:string[];key:string;depth:number}>=[];
   function visit(parent:string|null,path:string[],ids:string[]){for(const tag of children.get(parent)??[]){if(ids.includes(tag.id) || ids.length>=5)continue;const next=[...path,tagLabel(tag)],nextIds=[...ids,tag.id];result.push({...tag,parentId:parent,path:next.join(' / '),pathIds:nextIds,key:nextIds.join('/'),depth:nextIds.length});visit(tag.id,next,nextIds);}}
   visit(null,[],[]);return result;

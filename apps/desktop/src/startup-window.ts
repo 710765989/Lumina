@@ -1,3 +1,4 @@
+import {localizeStartupHtml,nativeText} from './ui-language.js';
 import {BrowserWindow,ipcMain} from 'electron';
 import {readFileSync} from 'node:fs';
 import path from 'node:path';
@@ -11,15 +12,15 @@ const html=(icon:string)=>`<!doctype html><html lang="zh-CN"><meta charset="utf-
 
 export function createStartupWindow(preload:string,onRetry:()=>void,onQuit:()=>void){
  const iconFile=path.join(path.dirname(preload),'renderer','lumina-album-icon-256.png');
- const window=new BrowserWindow({icon:iconFile,width:400,height:250,show:false,frame:false,resizable:false,maximizable:false,minimizable:false,backgroundColor:'#f6f8fc',title:'光匣 Lumina · 正在启动',webPreferences:{preload,contextIsolation:true,nodeIntegration:false}});
+ const window=new BrowserWindow({icon:iconFile,width:400,height:250,show:false,frame:false,resizable:false,maximizable:false,minimizable:false,backgroundColor:'#f6f8fc',title:nativeText('光匣 Lumina · 正在启动'),webPreferences:{preload,contextIsolation:true,nodeIntegration:false}});
  let current:StartupStatus={phase:'data'},closing=false;
- const update=(value:StartupStatus)=>{current=value;if(!window.isDestroyed())window.webContents.send('lumina:startup-status',value);};
+ const update=(value:StartupStatus)=>{current=value;if(!window.isDestroyed())window.webContents.send('lumina:startup-status',{...value,message:value.message?nativeText(value.message):undefined});};
  const action=(event:Electron.IpcMainEvent,value:unknown)=>{if(event.sender!==window.webContents)return;if(value==='quit')onQuit();else if(value==='retry'&&current.phase==='error'){update({phase:'data'});onRetry();}};
  ipcMain.on('lumina:startup-action',action);
  window.once('ready-to-show',()=>{if(!window.isDestroyed())window.show();});
  window.webContents.on('did-finish-load',()=>update(current));
  window.on('closed',()=>{ipcMain.removeListener('lumina:startup-action',action);if(!closing)onQuit();});
  const icon=readFileSync(iconFile).toString('base64');
- void window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html(icon))}`).catch(()=>{if(!window.isDestroyed())window.show();});
+ void window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(localizeStartupHtml(html(icon)))}`).catch(()=>{if(!window.isDestroyed())window.show();});
  return {window,update,close:()=>{closing=true;if(!window.isDestroyed())window.destroy();}};
 }

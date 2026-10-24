@@ -1,4 +1,7 @@
+import {matchesSearch,useTagSearch} from './localized-search';
+import {t,translateMessage} from './i18n';
 import {MediaActivity} from './MediaActivity';
+import {LanguageSettings,useLanguage} from './LanguageSettings';
 import {HiddenReasonDialog,type HiddenReason} from './HiddenReasonDialog';
 import {latestRequest,timelinePosition} from './latest-request';
 import {SearchChip} from './SearchChip';
@@ -25,7 +28,7 @@ import { TagsPage } from './TagsPage';
 import { AlbumsPage } from './AlbumsPage';
 import { OrganizationPage, ExportDialog, DeleteDialog, JobDialog } from './OrganizationPages';
 import { MediaViewer } from './MediaViewer';
-import { matchesSearch,tagLabel,tagOccurrences } from '@lumina/contracts';
+import { tagLabel,tagOccurrences } from '@lumina/contracts';
 import { TagAutocomplete } from './TagAutocomplete';
 import {useDismissableLayer} from './useDismissableLayer';
 import { useModalEscape } from './useModalEscape';
@@ -69,6 +72,7 @@ function formatBytes(bytes: number): string {
 }
 
 export function AppM1() {
+  const language=useLanguage();
   const [startupLoaded,setStartupLoaded]=useState(false),[startupError,setStartupError]=useState('');
   const startupDataReady=useRef(false),startupDirty=useRef(false);
   useStartup(startupLoaded,startupError);
@@ -87,6 +91,7 @@ export function AppM1() {
   const [hiddenSort,setHiddenSort]=useState<CollectionSort & {kind?:'photo'|'video'}>({sortBy:'fileTime',sort:'desc'});
   const [playbackTagId,setPlaybackTagId]=useState<string|null>(null);
   const [tags, setTags] = useState<Tag[]>([]);
+  useTagSearch(tags);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [thumbnails, setThumbnails] = useState<Record<string, string>>({});
   const [thumbnailErrors, setThumbnailErrors] = useState<Record<string, string>>({});
@@ -221,7 +226,7 @@ export function AppM1() {
   const mediaLoadingRef = useRef(false);
   const refreshingRef = useRef(false);
   const pendingRefreshRef = useRef<{ preserveLoaded?: boolean } | null>(null);
-  const mediaQueryKey = JSON.stringify([query, searchChips, mediaFilter, sortBy, sortDirection,timeAnchor,timeJump]);
+  const mediaQueryKey = JSON.stringify([language,query, searchChips, mediaFilter, sortBy, sortDirection,timeAnchor,timeJump]);
   const mediaQueryRef = useRef(mediaQueryKey); mediaQueryRef.current = mediaQueryKey;
 
   function mediaRequest(offset = 0, limit = 200) {
@@ -230,7 +235,7 @@ export function AppM1() {
   }
 
   function seekMonth(){
-    const key=mediaQueryKey,scope=JSON.stringify([query,searchChips,mediaFilter,sortBy,sortDirection]),cacheKey=scope+':'+(timeAnchor??'start');
+    const key=mediaQueryKey,scope=JSON.stringify([language,query,searchChips,mediaFilter,sortBy,sortDirection]),cacheKey=scope+':'+(timeAnchor??'start');
     const {start,total,bounds}=timelinePosition(timelineMonths,timeAnchor,sortDirection),base=mediaRequest(0,60);
     if(!timelineQueue.current)timelineQueue.current=latestRequest(async position=>{
       try{
@@ -392,7 +397,7 @@ export function AppM1() {
   }
 
   const refreshEffectKey=useRef<string|null>(null);
-  useEffect(() => {if(refreshEffectKey.current===mediaQueryKey)return;refreshEffectKey.current=mediaQueryKey;if(lastSeek.current!==timeJump&&startupDataReady.current){lastSeek.current=timeJump;seekMonth();return;}lastSeek.current=timeJump;timeSeekingRef.current=false;setTimeSeeking(false);setTimeSeekError('');void refresh().catch((error) => {setMessage(userErrorMessage(error));if(!startupLoaded)setStartupError(userErrorMessage(error));}); }, [query, searchChips, mediaFilter, sortBy, sortDirection,timeAnchor,timeJump]);
+  useEffect(() => {if(refreshEffectKey.current===mediaQueryKey)return;refreshEffectKey.current=mediaQueryKey;if(lastSeek.current!==timeJump&&startupDataReady.current){lastSeek.current=timeJump;seekMonth();return;}lastSeek.current=timeJump;timeSeekingRef.current=false;setTimeSeeking(false);setTimeSeekError('');void refresh().catch((error) => {setMessage(userErrorMessage(error));if(!startupLoaded)setStartupError(userErrorMessage(error));}); }, [language,query, searchChips, mediaFilter, sortBy, sortDirection,timeAnchor,timeJump]);
   useEffect(() => { setSelected(new Set()); selectionAnchorRef.current = null;selectionCursorRef.current=null; }, [query, searchChips, mediaFilter, sortBy, sortDirection,timeAnchor,timeJump]);
   useEffect(() => { setSelected(new Set()); selectionAnchorRef.current = null;selectionCursorRef.current=null; }, [selectedAlbumId]);
   useEffect(() => { setSelected(new Set()); selectionAnchorRef.current = null;selectionCursorRef.current=null; }, [active]);
@@ -438,10 +443,10 @@ export function AppM1() {
     return () => window.clearTimeout(timer);
   }, [message]);
 
-  async function addFolder() {const folder=await window.lumina.pickFolder();if(!folder)return;const key=(value:string)=>value.replaceAll('\\','/').replace(/\/+$/u,'').toLowerCase();if(roots.some(root=>key(root.absolutePath)===key(folder))){setMessage('该目录已添加，请在目录设置中编辑');return;}setDirectorySetup({absolutePath:folder});}
+  async function addFolder() {const folder=await window.lumina.pickFolder();if(!folder)return;const key=(value:string)=>value.replaceAll('\\','/').replace(/\/+$/u,'').toLowerCase();if(roots.some(root=>key(root.absolutePath)===key(folder))){setMessage(t("该目录已添加，请在目录设置中编辑"));return;}setDirectorySetup({absolutePath:folder});}
 
   async function rescanRoot(root:Root){
-    setTaskBusyId(root.id);try{const result=await window.lumina.command({type:'roots.scan',id:root.id});await refresh({preserveLoaded:true});setMessage(`扫描完成，识别 ${result.media.length} 项；跳过/失败明细见任务状态`);}catch(error){setMessage(userErrorMessage(error));}finally{setTaskBusyId(null);}
+    setTaskBusyId(root.id);try{const result=await window.lumina.command({type:'roots.scan',id:root.id});await refresh({preserveLoaded:true});setMessage(t("扫描完成，识别 {0} 项；跳过/失败明细见任务状态", [result.media.length]));}catch(error){setMessage(userErrorMessage(error));}finally{setTaskBusyId(null);}
   }
 
   useHomeKeyboard({editMode,active:active==='library'&&!timeSeeking,items:media,selected,onSelect:setSelected,anchor:selectionAnchorRef,cursor:selectionCursorRef,loadMore:loadMoreMedia,loadPrevious:loadPreviousMedia,isLoading:()=>mediaLoadingRef.current||refreshingRef.current,hasPrevious:mediaStart>0,hasMore:canLoadMore,view:homeView,queryKey:mediaQueryKey,request:mediaRequest()});
@@ -541,10 +546,10 @@ export function AppM1() {
 
   function searchOptions():{name:string;label:string;untagged?:boolean}[] {
     if(searchMode==='extension')return extensionSuggestions(searchInput,formatSuggestions).map(row=>({name:row.value,label:row.label}));
-    if(searchMode!=='file'&&searchMode!=='excludeFile'){const tags=(searchInput.trim()?matchingTags(searchInput):orderedTags().slice(0,10)).map((tag)=>({name:tag.name,label:`${tag.directory?'▱ ':'#'}${tag.path??tagLabel(tag)}`}));if(!tags.length && searchInput.trim())tags.push({name:searchInput.trim(),label:`#${searchInput.trim()}（按名称搜索）`});return tags;}
+    if(searchMode!=='file'&&searchMode!=='excludeFile'){const tags=(searchInput.trim()?matchingTags(searchInput):orderedTags().slice(0,10)).map((tag)=>({name:tag.name,label:`${tag.directory?'▱ ':'#'}${tag.path??tagLabel(tag)}`}));if(!tags.length && searchInput.trim())tags.push({name:searchInput.trim(),label:t("#{0}（按名称搜索）", [searchInput.trim()])});return tags;}
     if(!searchInput.trim())return [];
-    const rows=fileSuggestions.map((row)=>({name:row.name,label:row.count>1?`${row.name} · ${row.count} 项`:row.name}));
-    if(!rows.some((row)=>row.name.toLocaleLowerCase()===searchInput.trim().toLocaleLowerCase()))rows.push({name:searchInput.trim(),label:`搜索${searchMode==='excludeFile'?'不包含':'包含'}“${searchInput.trim()}”的文件`});
+    const rows=fileSuggestions.map((row)=>({name:row.name,label:row.count>1?t("{0} · {1} 项", [row.name, row.count]):row.name}));
+    if(!rows.some((row)=>row.name.toLocaleLowerCase()===searchInput.trim().toLocaleLowerCase()))rows.push({name:searchInput.trim(),label:t("搜索{0}“{1}”的文件", [searchMode==='excludeFile'?t("不包含"):t("包含"), searchInput.trim()])});
     return rows;
   }
   function orderedTags():Tag[]{
@@ -573,7 +578,7 @@ export function AppM1() {
 
   async function openTagDialog(root?:Root, targetIds?:string[]) {
     let ids:string[];try{ids=root?await window.lumina.command({type:'roots.mediaIds',id:root.id}):targetIds??[...selected];}catch(error){setMessage(userErrorMessage(error));return;}
-    if(!ids.length){if(root)setMessage('该目录暂无可编辑标签的已索引媒体');return;}setTagRoot(root??null);
+    if(!ids.length){if(root)setMessage(t("该目录暂无可编辑标签的已索引媒体"));return;}setTagRoot(root??null);
     setTagTargetIds(ids);setTagDialogMode('edit'); setTagDialogName(''); setRecentTags(await window.lumina.command({type:'tags.recent'})); await loadTagDialogTags(ids);
   }
 
@@ -624,12 +629,12 @@ export function AppM1() {
 
   async function addSelectedToAlbum() {
     if (!selectedAlbumId || selected.size === 0) return;
-    await window.lumina.command({ type: 'albums.addMedia', id: selectedAlbumId, mediaIds: [...selected] }); await refreshAlbum(selectedAlbumId); setSelected(new Set()); setMessage('已加入相册');
+    await window.lumina.command({ type: 'albums.addMedia', id: selectedAlbumId, mediaIds: [...selected] }); await refreshAlbum(selectedAlbumId); setSelected(new Set()); setMessage(t("已加入相册"));
   }
 
   async function addSelectedToNamedAlbum() {
     if (selected.size === 0) return;
-    if (!albums.length) { setMessage('请先创建相册'); return; }
+    if (!albums.length) { setMessage(t("请先创建相册")); return; }
     setAlbumPickerMediaIds([...selected]);
   }
 
@@ -639,7 +644,7 @@ export function AppM1() {
     if(ids.length>1){const job=await startBackgroundJob({type:'jobs.start',kind:'visibility',includeHidden:true,mediaIds:ids,hidden,unhideTags:byMedia});setJobId(job.id);clearSelection();return;}
     const result=await window.lumina.command({type:hidden?'media.hide':'media.unhide',id:ids[0],tagIds:byMedia[ids[0]!]});announceVisibilityTask(result.taskId);
     clearSelection();timelineWindows.current.clear();if(hidden)setMedia(current=>current.filter(item=>!ids.includes(item.id)));setOrganizationRevision(value=>value+1);
-    setMessage(result.taskId?(hidden?'已隐藏；Windows 属性正在后台同步':'已取消隐藏；Windows 属性正在后台同步'):hidden?'已隐藏所选媒体':'已取消隐藏');
+    setMessage(result.taskId?(hidden?t("已隐藏；Windows 属性正在后台同步"):t("已取消隐藏；Windows 属性正在后台同步")):hidden?t("已隐藏所选媒体"):t("已取消隐藏"));
     // The coalesced library-change event refreshes counts and collections.
     // Do not hold the completed action open for an entire library refresh.
   }
@@ -650,7 +655,7 @@ export function AppM1() {
   async function hideSelectedMedia(){await requestVisibility([...selected],active!=='hidden');}
   async function undoSoftwareDelete(){
     if(undoTrashIds.length>1){const job=await startBackgroundJob({type:'jobs.start',kind:'restore',mediaIds:undoTrashIds});setJobId(job.id);setUndoTrashIds([]);return;}
-    setUndoBusy(true);setUndoError('');try{const failed:string[]=[];let message='';for(let offset=0;offset<undoTrashIds.length;offset+=1000){const results=await window.lumina.command({type:'trash.restore',mediaIds:undoTrashIds.slice(offset,offset+1000)});for(const result of results)if(!result.ok){failed.push(result.id);message=userErrorMessage(result.error);}}setUndoTrashIds(failed);if(failed.length)setUndoError(`${failed.length} 项未能还原：${message}`);else setMessage('已撤销删除');await refresh({preserveLoaded:true});setOrganizationRevision((value)=>value+1);}catch(error){setUndoError(userErrorMessage(error));}finally{setUndoBusy(false);}
+    setUndoBusy(true);setUndoError('');try{const failed:string[]=[];let message='';for(let offset=0;offset<undoTrashIds.length;offset+=1000){const results=await window.lumina.command({type:'trash.restore',mediaIds:undoTrashIds.slice(offset,offset+1000)});for(const result of results)if(!result.ok){failed.push(result.id);message=userErrorMessage(result.error);}}setUndoTrashIds(failed);if(failed.length)setUndoError(t("{0} 项未能还原：{1}", [failed.length, message]));else setMessage(t("已撤销删除"));await refresh({preserveLoaded:true});setOrganizationRevision((value)=>value+1);}catch(error){setUndoError(userErrorMessage(error));}finally{setUndoBusy(false);}
   }
 
   async function deleteSelectedMedia() {
@@ -660,26 +665,26 @@ export function AppM1() {
 
   async function removeSelectedFromAlbum() {
     if (!selectedAlbumId || selected.size === 0) return;
-    await window.lumina.command({ type: 'albums.removeMedia', id: selectedAlbumId, mediaIds: [...selected] }); await refreshAlbum(selectedAlbumId); setSelected(new Set()); setMessage('已移出相册');
+    await window.lumina.command({ type: 'albums.removeMedia', id: selectedAlbumId, mediaIds: [...selected] }); await refreshAlbum(selectedAlbumId); setSelected(new Set()); setMessage(t("已移出相册"));
   }
 
   async function setCover(mediaId: string | null) {
     if (!m2Album || active!=='albums') return;
     try{await window.lumina.command({ type: 'albums.setCover', id: m2Album.id, mediaId });
       setContextMenu(null);const next=await window.lumina.command({type:'albums.list'});setAlbums(next as Album[]);
-      setMessage(mediaId ? '封面已设置' : '已恢复默认封面');
+      setMessage(mediaId ? t("封面已设置") : t("已恢复默认封面"));
     }catch(error){setMessage(userErrorMessage(error));}
   }
   async function removeAlbumSelection(){
     if(!m2Album||!selected.size)return;
     try{const result=await window.lumina.command({type:m2Album.kind==='smart'?'smart.exclude':'albums.removeMedia',id:m2Album.id,mediaIds:[...selected]});
       if(result.undoToken)setAlbumUndo({token:result.undoToken,count:result.removed,smart:m2Album.kind==='smart',name:m2Album.name});
-      clearSelection();await refreshTagChanges();setMessage(m2Album.kind==='smart'?'已加入排除项':'已从相册移出，原文件保留');
+      clearSelection();await refreshTagChanges();setMessage(m2Album.kind==='smart'?t("已加入排除项"):t("已从相册移出，原文件保留"));
     }catch(error){setMessage(userErrorMessage(error));}
   }
   async function undoAlbumSelection(){
     if(!albumUndo||albumUndoBusy)return;setAlbumUndoBusy(true);
-    try{const result=await window.lumina.command({type:'albums.undoRemoval',token:albumUndo.token});setAlbumUndo(null);await refreshTagChanges();setMessage(`已撤销，恢复 ${result.restored} 项相册关联`);}
+    try{const result=await window.lumina.command({type:'albums.undoRemoval',token:albumUndo.token});setAlbumUndo(null);await refreshTagChanges();setMessage(t("已撤销，恢复 {0} 项相册关联", [result.restored]));}
     catch(error){setMessage(userErrorMessage(error));}finally{setAlbumUndoBusy(false);}
   }
 
@@ -687,16 +692,16 @@ export function AppM1() {
     try {
       await window.lumina.command({ type: 'roots.setEnabled', id: root.id, enabled: !root.enabled });
       await refresh();
-      setMessage(root.enabled ? '目录已停用' : '目录已启用');
-    } catch { setMessage('目录状态更新失败，请重试。'); }
+      setMessage(root.enabled ? t("目录已停用") : t("目录已启用"));
+    } catch { setMessage(t("目录状态更新失败，请重试。")); }
   }
   async function removeRoot(root: Root) {
-    if (!window.confirm(`移除目录“${root.label}”？该目录的媒体索引和相册引用会被删除，原文件不会被删除。`)) return;
+    if (!window.confirm(t("移除目录“{0}”？该目录的媒体索引和相册引用会被删除，原文件不会被删除。", [root.label]))) return;
     try {
       const result = await window.lumina.command({ type: 'roots.remove', id: root.id }) as { removedMedia?: number };
       await refresh();
-      setMessage(`目录已移除，清理 ${result.removedMedia ?? 0} 项索引，原文件未删除`);
-    } catch { setMessage('目录移除失败，请重试。'); }
+      setMessage(t("目录已移除，清理 {0} 项索引，原文件未删除", [result.removedMedia ?? 0]));
+    } catch { setMessage(t("目录移除失败，请重试。")); }
   }
 
   function openContextMenu(item: Media, event: React.MouseEvent<HTMLElement>) {
@@ -711,8 +716,8 @@ export function AppM1() {
 
   async function copyContextMedia() {
     if (!contextMenu) return;
-    try { await window.lumina.native({ action: 'copy', mediaIds: selected.has(contextMenu.item.id) ? [...selected] : [contextMenu.item.id] }); setMessage('已复制；原文件可能保留 EXIF，清除 GPS 请使用脱敏导出'); }
-    catch { setMessage('复制失败，请检查系统剪贴板权限'); }
+    try { await window.lumina.native({ action: 'copy', mediaIds: selected.has(contextMenu.item.id) ? [...selected] : [contextMenu.item.id] }); setMessage(t("已复制；原文件可能保留 EXIF，清除 GPS 请使用脱敏导出")); }
+    catch { setMessage(t("复制失败，请检查系统剪贴板权限")); }
     setContextMenu(null);
   }
 
@@ -726,7 +731,7 @@ export function AppM1() {
 
   async function addContextMediaToAlbum() {
     if (!contextMenu) return;
-    if (!albums.length) { setMessage('请先创建相册'); setContextMenu(null); return; }
+    if (!albums.length) { setMessage(t("请先创建相册")); setContextMenu(null); return; }
     setAlbumPickerMediaIds([contextMenu.item.id]); setContextMenu(null);
   }
 
@@ -738,9 +743,9 @@ export function AppM1() {
   }
 
   async function viewerMediaAction(action:'copy'|'album'|'tags'|'hide'|'cover',item:Media){
-    if(action==='copy'){await window.lumina.native({action:'copy',mediaIds:[item.id]});setMessage('已复制');}
+    if(action==='copy'){await window.lumina.native({action:'copy',mediaIds:[item.id]});setMessage(t("已复制"));}
     else if(action==='cover'){await setCover(item.id);}
-    else if(action==='album'){if(!albums.length){setMessage('请先创建相册');return;}setAlbumPickerMediaIds([item.id]);}
+    else if(action==='album'){if(!albums.length){setMessage(t("请先创建相册"));return;}setAlbumPickerMediaIds([item.id]);}
     else if(action==='tags'){setTagRoot(null);setTagTargetIds([item.id]);setTagDialogMode('edit');setTagDialogName('');setRecentTags(await window.lumina.command({type:'tags.recent'}));await loadTagDialogTags([item.id]);}
     else{setPreview(null);await requestVisibility([item.id],active!=='hidden');setPlaybackRevision(value=>value+1);}
   }
@@ -754,8 +759,8 @@ export function AppM1() {
     if(task.kind!=='thumbnail')return;setTaskBusyId(task.id);
     try{const result=await window.lumina.command({type:'tasks.retryThumbnail',id:task.id});const payload=task.payloadJson?JSON.parse(task.payloadJson):{};const ids:string[]=result.mediaIds??(payload.mediaId?[payload.mediaId]:[]);setThumbnailErrors((current)=>Object.fromEntries(Object.entries(current).filter(([id])=>!ids.includes(id))));
       if(result.queued)window.dispatchEvent(new CustomEvent('lumina-job-started',{detail:{id:task.id,kind:'thumbnail',began:Date.now()}}));else if(payload.mediaId){const url=await window.lumina.thumbnail(payload.mediaId);setThumbnails((current)=>({...current,[payload.mediaId]:url}));}
-      await refreshTasks();setMessage(result.queued?'缩略图重试已加入后台队列':'缩略图任务已恢复');
-    }catch(error){setMessage(`缩略图重试失败：${userErrorMessage(error)}`);}finally{setTaskBusyId(null);}
+      await refreshTasks();setMessage(result.queued?t("缩略图重试已加入后台队列"):t("缩略图任务已恢复"));
+    }catch(error){setMessage(t("缩略图重试失败：{0}", [userErrorMessage(error)]));}finally{setTaskBusyId(null);}
   }
 
   async function retryAllTasks() {
@@ -765,21 +770,21 @@ export function AppM1() {
     try {
       for (const task of retryable) await retryTask(task);
       await refreshTasks();
-      setMessage(`已完成 ${retryable.length} 个任务的重试`);
+      setMessage(t("已完成 {0} 个任务的重试", [retryable.length]));
     } finally { setRetryAllBusy(false); }
   }
 
   function taskLabel(task: Task): string {
-    if (task.kind === 'thumbnail') return '缩略图';
-    if (task.kind === 'scan') return '目录扫描';
+    if (task.kind === 'thumbnail') return t("缩略图");
+    if (task.kind === 'scan') return t("目录扫描");
     return task.kind;
   }
 
   function taskStatusLabel(status: string): string {
-    return ({ queued: '等待中', running: '处理中', paused: '已暂停', completed: '已完成', failed: '失败', cancelled: '已取消' } as Record<string, string>)[status] ?? status;
+    return ({ queued: t("等待中"), running: t("处理中"), paused: t("已暂停"), completed: t("已完成"), failed: t("失败"), cancelled: t("已取消") } as Record<string, string>)[status] ?? status;
   }
 
-  const title = { library: '图库', albums: '相册', tags: '标签', settings: '设置', trash: '回收站', hidden: '隐藏内容', geo: '足迹', duplicates: '重复检测' }[active];
+  const title = { library: t("图库"), albums: t("相册"), tags: t("标签"), settings: t("设置"), trash: t("回收站"), hidden: t("隐藏内容"), geo: t("足迹"), duplicates: t("重复检测") }[active];
   const currentAlbum = albums.find((album) => album.id === selectedAlbumId);
   const displayedAlbumMedia = selectedAlbumId ? albumMedia : [];
   const {type: _requestType,offset: _requestOffset,limit: _requestLimit,...playbackQuery}=mediaRequest();
@@ -806,7 +811,7 @@ export function AppM1() {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') {
         event.preventDefault(); if (current.active === 'trash') void window.lumina.command({ type: 'trash.ids' }).then((ids: string[]) => setSelected(new Set(ids))); else setSelected(new Set(current.previewItems.map((item) => item.id)));
       }
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'c' && current.selected.size) { event.preventDefault(); void window.lumina.native({ action: event.shiftKey ? 'copy-original' : 'copy', mediaIds: [...current.selected] }).then(() => setMessage('已复制；原文件可能保留 EXIF')).catch((error) => setMessage(userErrorMessage(error))); }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'c' && current.selected.size) { event.preventDefault(); void window.lumina.native({ action: event.shiftKey ? 'copy-original' : 'copy', mediaIds: [...current.selected] }).then(() => setMessage(t("已复制；原文件可能保留 EXIF"))).catch((error) => setMessage(userErrorMessage(error))); }
       if (event.key === 'Delete' && current.selected.size) { event.preventDefault(); if (current.active === 'trash') setTrashPurgeIds([...current.selected]); else { setForcePermanent(event.shiftKey); setDeleteIds([...current.selected]); } }
     }; window.addEventListener('keydown', handler); return () => window.removeEventListener('keydown', handler);
   }, []);
@@ -838,65 +843,65 @@ export function AppM1() {
     }
   }
 
-  async function finishDelete(results:{id:string;ok:boolean;error?:string}[],mode:string,background=false){ const success = new Set(results.filter((item) => item.ok).map((item) => item.id)); if(success.size){setUndoError('');setUndoTrashIds(mode==='software'?[...success]:[]);} const neighbors=preview && viewerWindow.some((item)=>item.id===preview.id) ? viewerWindow : previewItems;const currentIndex=preview ? neighbors.findIndex((item)=>item.id===preview.id) : -1;const next=neighbors.slice(currentIndex+1).find((item)=>!success.has(item.id)) ?? neighbors.slice(0,currentIndex).reverse().find((item)=>!success.has(item.id));if(success.size)setPlaybackRevision((value)=>value+1); if (preview && success.has(preview.id)) setPreview(next ?? null); if(!background)clearSelection();setMedia(current=>current.filter(item=>!success.has(item.id)));timelineWindows.current.clear();setOrganizationRevision((value) => value + 1); const failed = results.filter((item) => !item.ok); setMessage(failed.length ? `成功 ${success.size} 项；${failed.map((item) => userErrorMessage(item.error)).join('；')}` : `已处理 ${success.size} 项`); }
+  async function finishDelete(results:{id:string;ok:boolean;error?:string}[],mode:string,background=false){ const success = new Set(results.filter((item) => item.ok).map((item) => item.id)); if(success.size){setUndoError('');setUndoTrashIds(mode==='software'?[...success]:[]);} const neighbors=preview && viewerWindow.some((item)=>item.id===preview.id) ? viewerWindow : previewItems;const currentIndex=preview ? neighbors.findIndex((item)=>item.id===preview.id) : -1;const next=neighbors.slice(currentIndex+1).find((item)=>!success.has(item.id)) ?? neighbors.slice(0,currentIndex).reverse().find((item)=>!success.has(item.id));if(success.size)setPlaybackRevision((value)=>value+1); if (preview && success.has(preview.id)) setPreview(next ?? null); if(!background)clearSelection();setMedia(current=>current.filter(item=>!success.has(item.id)));timelineWindows.current.clear();setOrganizationRevision((value) => value + 1); const failed = results.filter((item) => !item.ok); setMessage(failed.length ? t("成功 {0} 项；{1}", [success.size, failed.map((item) => userErrorMessage(item.error)).join('；')]) : t("已处理 {0} 项", [success.size])); }
   const finishDeleteLatest=useRef(finishDelete);finishDeleteLatest.current=finishDelete;
-  useEffect(()=>{if(!pendingDeletes.length)return;let disposed=false;let timer:number|undefined;const poll=async()=>{for(const task of pendingDeletes){try{const job=await window.lumina.command({type:'jobs.result',id:task.id,limit:1000});if(disposed)return;if(['completed','failed','cancelled'].includes(job.status) && !job.active){const items=[...job.items];while(items.length<job.total){const next=await window.lumina.command({type:'jobs.result',id:task.id,limit:1000,offset:items.length});if(!next.items.length)break;items.push(...next.items);}await finishDeleteLatest.current(items.map((row:any)=>({id:row.id,ok:row.status==='completed',error:row.error??(row.status==='pending'?'已取消，未执行':undefined)})),task.mode,true);if(!disposed)setPendingDeletes((current)=>current.filter((row)=>row.id!==task.id));}}catch(error){if(!disposed)setMessage(userErrorMessage(error));}}if(!disposed)timer=window.setTimeout(poll,700);};void poll();return()=>{disposed=true;window.clearTimeout(timer);};},[pendingDeletes]);
+  useEffect(()=>{if(!pendingDeletes.length)return;let disposed=false;let timer:number|undefined;const poll=async()=>{for(const task of pendingDeletes){try{const job=await window.lumina.command({type:'jobs.result',id:task.id,limit:1000});if(disposed)return;if(['completed','failed','cancelled'].includes(job.status) && !job.active){const items=[...job.items];while(items.length<job.total){const next=await window.lumina.command({type:'jobs.result',id:task.id,limit:1000,offset:items.length});if(!next.items.length)break;items.push(...next.items);}await finishDeleteLatest.current(items.map((row:any)=>({id:row.id,ok:row.status==='completed',error:row.error??(row.status==='pending'?t("已取消，未执行"):undefined)})),task.mode,true);if(!disposed)setPendingDeletes((current)=>current.filter((row)=>row.id!==task.id));}}catch(error){if(!disposed)setMessage(userErrorMessage(error));}}if(!disposed)timer=window.setTimeout(poll,700);};void poll();return()=>{disposed=true;window.clearTimeout(timer);};},[pendingDeletes]);
   return <div className={expiryRunning ? 'shell expiry-running' : 'shell'}>
-    {expiryRunning && <div className="expiry-status" role="status">正在按入站策略处理到期项目…</div>}
+    {expiryRunning && <div className="expiry-status" role="status">{t("正在按入站策略处理到期项目…")}</div>}
     {taskDrawerOpen&&<TaskDrawer tasks={tasks} onRefresh={refreshTasks} onRetryThumbnail={retryTask} onClose={()=>setTaskDrawerOpen(false)}/>}
-    <header className="app-header"><div className="app-brand"><img className="brand-mark" src="./lumina-album-icon-256.png" alt=""/><strong>光匣</strong><small>Lumina</small></div><div className="header-tools"><ActionButton title="局域网状态">◎</ActionButton><ActionButton title="主题">◐</ActionButton><ActionButton className="task-entry" title="任务状态" aria-label={`任务状态${activeTaskCount?` · ${activeTaskCount} 项进行中`:''}`} onClick={()=>setTaskDrawerOpen(true)}>◷{activeTaskCount>0 && <span>{activeTaskCount}</span>}</ActionButton><ActionButton className="account-tool" title="管理员">管</ActionButton></div></header>
+    <header className="app-header"><div className="app-brand"><img className="brand-mark" src="./lumina-album-icon-256.png" alt=""/><strong>{t("光匣")}</strong>{language==='zh-CN'&&<small>Lumina</small>}</div><div className="header-tools"><ActionButton title={t("局域网状态")}>◎</ActionButton><ActionButton title={t("主题")}>◐</ActionButton><ActionButton className="task-entry" title={t("任务状态")} aria-label={t("任务状态{0}", [activeTaskCount?t(" · {0} 项进行中", [activeTaskCount]):''])} onClick={()=>setTaskDrawerOpen(true)}>◷{activeTaskCount>0 && <span>{activeTaskCount}</span>}</ActionButton><ActionButton className="account-tool" title={t("管理员")}>{t("管")}</ActionButton></div></header>
     <div className="app-body"><aside className="sidebar"><nav>
-      <ActionButton className={active === 'library' ? 'nav-item active' : 'nav-item'} onClick={() => navigate('library')}><span>⌂</span>图库</ActionButton>
-      <ActionButton className={active === 'albums' ? 'nav-item active' : 'nav-item'} onClick={() => navigate('albums')}><span>▦</span>相册</ActionButton>
-      <ActionButton className={active === 'tags' ? 'nav-item active' : 'nav-item'} onClick={() => navigate('tags')}><span>◇</span>标签</ActionButton>
-      <ActionButton className={active === 'geo' ? 'nav-item active' : 'nav-item'} onClick={() => navigate('geo')}><span>⌖</span>足迹</ActionButton>
-      <ActionButton className={active === 'trash' ? 'nav-item active' : 'nav-item'} onClick={() => navigate('trash')}><span>↶</span>回收站</ActionButton>
-      <ActionButton className={active === 'duplicates' ? 'nav-item active' : 'nav-item'} onClick={() => navigate('duplicates')}><span>▧</span>重复检测</ActionButton>
-      <span className="nav-group-label settings-label">设置</span>
-      <ActionButton className={active === 'settings' && settingsSection === 'general' ? 'nav-item active' : 'nav-item'} onClick={() => { setActive('settings'); setSettingsSection('general'); }}><span>◐</span>常规</ActionButton>
-      <ActionButton className={active === 'settings' && settingsSection === 'theme' ? 'nav-item active' : 'nav-item'} onClick={() => { setActive('settings'); setSettingsSection('theme'); }}><span>◉</span>主题</ActionButton>
-      <ActionButton className={active === 'settings' && settingsSection === 'account' ? 'nav-item active' : 'nav-item'} onClick={() => { setActive('settings'); setSettingsSection('account'); }}><span>◎</span>账号管理</ActionButton>
-      <ActionButton className={active === 'settings' && settingsSection === 'about' ? 'nav-item active' : 'nav-item'} onClick={() => { setActive('settings'); setSettingsSection('about'); }}><span>i</span>关于</ActionButton>
-    </nav><div className="sidebar-bottom"><ActionButton className={active === 'hidden' ? 'nav-item active' : 'nav-item'} onClick={() => navigate('hidden')}><span>⌂</span>隐藏内容</ActionButton><div className="storage-card"><strong>图库存储</strong><span>{formatBytes(mediaStats.totalSizeBytes)} · {mediaStats.total} 项</span><span>照片 {formatBytes(mediaStats.photoSizeBytes ?? 0)} · 视频 {formatBytes(mediaStats.videoSizeBytes ?? 0)}</span></div></div></aside>
+      <ActionButton className={active === 'library' ? 'nav-item active' : 'nav-item'} onClick={() => navigate('library')}><span>⌂</span>{t("图库")}</ActionButton>
+      <ActionButton className={active === 'albums' ? 'nav-item active' : 'nav-item'} onClick={() => navigate('albums')}><span>▦</span>{t("相册")}</ActionButton>
+      <ActionButton className={active === 'tags' ? 'nav-item active' : 'nav-item'} onClick={() => navigate('tags')}><span>◇</span>{t("标签")}</ActionButton>
+      <ActionButton className={active === 'geo' ? 'nav-item active' : 'nav-item'} onClick={() => navigate('geo')}><span>⌖</span>{t("足迹")}</ActionButton>
+      <ActionButton className={active === 'trash' ? 'nav-item active' : 'nav-item'} onClick={() => navigate('trash')}><span>↶</span>{t("回收站")}</ActionButton>
+      <ActionButton className={active === 'duplicates' ? 'nav-item active' : 'nav-item'} onClick={() => navigate('duplicates')}><span>▧</span>{t("重复检测")}</ActionButton>
+      <span className="nav-group-label settings-label">{t("设置")}</span>
+      <ActionButton className={active === 'settings' && settingsSection === 'general' ? 'nav-item active' : 'nav-item'} onClick={() => { setActive('settings'); setSettingsSection('general'); }}><span>◐</span>{t("常规")}</ActionButton>
+      <ActionButton className={active === 'settings' && settingsSection === 'theme' ? 'nav-item active' : 'nav-item'} onClick={() => { setActive('settings'); setSettingsSection('theme'); }}><span>◉</span>{t("主题")}</ActionButton>
+      <ActionButton className={active === 'settings' && settingsSection === 'account' ? 'nav-item active' : 'nav-item'} onClick={() => { setActive('settings'); setSettingsSection('account'); }}><span>◎</span>{t("账号管理")}</ActionButton>
+      <ActionButton className={active === 'settings' && settingsSection === 'about' ? 'nav-item active' : 'nav-item'} onClick={() => { setActive('settings'); setSettingsSection('about'); }}><span>i</span>{t("关于")}</ActionButton>
+    </nav><div className="sidebar-bottom"><ActionButton className={active === 'hidden' ? 'nav-item active' : 'nav-item'} onClick={() => navigate('hidden')}><span>⌂</span>{t("隐藏内容")}</ActionButton><div className="storage-card"><strong>{t("图库存储")}</strong><span>{formatBytes(mediaStats.totalSizeBytes)} · {mediaStats.total}{t("项")}</span><span>{t("照片")}{formatBytes(mediaStats.photoSizeBytes ?? 0)}{t("· 视频")}{formatBytes(mediaStats.videoSizeBytes ?? 0)}</span></div></div></aside>
     <main className={active==='library'?'main main-library':'main'}>{visitedPages.has('library') && <MediaActivity.Provider value={active==='library'}><section ref={homeWheel} hidden={active!=='library'} className="content library-content" onClick={handleLibraryBlankClick}>
-       <div className="section-head library-heading"><div><h2>图库</h2><p className="page-summary">{viewStats.total} 项 · 照片 {viewStats.photo} · 视频 {viewStats.video}</p></div><div className="section-actions"><ActionButton className="ghost import-entry" title="选择文件导入，也可Ctrl+V粘贴或拖入文件夹" onClick={()=>requestImport('files')}>＋ 导入</ActionButton><div className="filter-group"><ActionButton className={mediaFilter === 'all' ? 'active' : ''} onClick={() => setMediaFilter('all')}>全部</ActionButton><ActionButton className={mediaFilter === 'photo' ? 'active' : ''} onClick={() => setMediaFilter('photo')}>照片</ActionButton><ActionButton className={mediaFilter === 'video' ? 'active' : ''} onClick={() => setMediaFilter('video')}>视频</ActionButton></div></div></div>
-       <div ref={searchBuilderRef} className="search-builder" onClick={() => setSearchMenuOpen(true)}><span className="search-icon">⌕</span>{searchChips.map((chip) => <SearchChip key={chip.id} label={chip.untagged?`标签：${chip.type==='tag'?'无':'有'}`:`${chip.type === 'file' ? '文件名包含' : chip.type === 'excludeFile' ? '文件名不包含' : chip.type === 'extension' ? '文件格式' : chip.type === 'tag' ? '标签包含' : '标签排除'}：${chip.value}`} value={chip.value} onRemove={()=>removeSearchChip(chip.id)}/>)}<span className="search-input-wrap">{searchModeSelected && <span className="search-prefix">{searchMode === 'file' ? '文件名包含' : searchMode === 'excludeFile' ? '文件名不包含' : searchMode === 'extension' ? '文件格式' : searchMode === 'tag' ? '标签包含' : '标签排除'}：</span>}<input ref={searchInputRef} value={searchInput} title={searchInput||undefined} onFocus={handleSearchFocus} onChange={(event) => { const value = event.target.value; setSearchInput(value); setSearchMenuOpen(true); setTagSuggestionIndex(0); if (!searchModeSelected) setQuery(value); }} onKeyDown={handleSearchKeyDown} placeholder={searchModeSelected ? '输入后按回车' : '搜索照片、视频或标签…'} />{!searchModeSelected && searchMenuOpen && <SearchTypeMenu state={searchTypes}/>}{searchMenuOpen && searchModeSelected && searchOptions().length > 0 && <div className="search-tag-suggestions" role="listbox" aria-label={searchMode==='file'||searchMode==='excludeFile'?'文件名建议':searchMode==='extension'?'文件格式建议':'标签建议'} onClick={(event) => event.stopPropagation()}>{searchOptions().map((option,index)=><ActionButton className={index===tagSuggestionIndex?'active':''} role="option" aria-selected={index===tagSuggestionIndex} key={option.untagged?'__untagged__':option.name} title={option.untagged?'没有任何标签的媒体':option.label} onClick={()=>selectSearchSuggestion(option.name,option.untagged)}>{option.label}</ActionButton>)}</div>}</span></div>
-       <div className="home-view-toolbar"><label className="thumbnail-size">缩略图<input aria-label="缩略图大小" type="range" min="105" max="320" step="1" value={homeView==='list'?105:thumbnailSize} onChange={(event)=>{const value=Number(event.target.value);if(value<110)setHomeView('list');else{if(homeView==='list')setHomeView(homeGridView);setThumbnailSize(Math.max(110,value));}}}/></label><div className="page-actions"><select className="view-select" aria-label="视图切换" value={homeView} onChange={(event)=>chooseHomeView(event.target.value as typeof homeView)}><option value="immersive">默认视图</option><option value="time">时间视图</option><option value="masonry">瀑布视图</option><option value="list">列表</option></select><div ref={sortControlRef} className="sort-control"><ActionButton className="ghost sort-label" onClick={() => setSortMenuOpen((open) => !open)} aria-haspopup="listbox" aria-expanded={sortMenuOpen}>{sortLabels[sortBy]}</ActionButton><ActionButton className="ghost sort-direction" onClick={() => setSortDirection((current) => current === 'desc' ? 'asc' : 'desc')} title={sortDirection === 'desc' ? '当前倒序，点击切换为正序' : '当前正序，点击切换为倒序'} aria-label={sortDirection === 'desc' ? '倒序，点击切换为正序' : '正序，点击切换为倒序'}>{sortDirection === 'desc' ? '↓' : '↑'}</ActionButton>{sortMenuOpen && <div className="sort-menu" role="listbox">{(Object.keys(sortLabels) as SortBy[]).map((option) => <ActionButton key={option} className={sortBy === option ? 'active' : ''} role="option" aria-selected={sortBy === option} onClick={() => { setSortBy(option); setSortMenuOpen(false); }}>{sortLabels[option]}</ActionButton>)}</div>}</div></div></div>
-       <div className="library-browser">{timeSeeking||timeSeekError?<div className="timeline-position-state" role="status" aria-live="polite" aria-busy={timeSeeking} style={{'--preview-card-size':`${thumbnailSize}px`} as React.CSSProperties}><h3>{timeAnchor?timeAnchor.replace('-','年')+'月':'图库起点'}</h3>{timeSeekError?<><p>{timeSeekError}</p><ActionButton className="ghost" onClick={()=>timeAnchor?jumpMonth(timeAnchor):jumpMonthReset()}>重试</ActionButton></>:<><p>正在加载该位置的媒体…</p><div className="timeline-position-skeleton" aria-hidden="true">{Array.from({length:24},(_,index)=><span key={index}/>)}</div></>}</div>:media.length === 0 ? <div className="empty"><div className="empty-icon">▧</div><h3>{query.trim() || searchChips.length ? '没有匹配媒体' : '还没有媒体'}</h3><p>{query.trim() || searchChips.length ? '尝试更换文件名或标签。' : '添加一个本地目录开始建立图库。'}</p>{!query.trim() && searchChips.length === 0 && <ActionButton className="primary" onClick={() => addFolder()}>添加图库目录</ActionButton>}</div> : <GroupedMediaGrid selectionSource={{...mediaRequest(),scope:'library',query:mediaRequest().query??''}} tagRevision={organizationRevision} monthCounts={Object.fromEntries(timelineMonths.map(row=>[`${row.month.slice(0,4)}年${Number(row.month.slice(5))}月`,row.count]))} windowKey={mediaWindow.current.key} startOffset={mediaStart} onStartReached={()=>void loadPreviousMedia()} items={media} thumbnails={thumbnails} selected={selected} onToggle={toggleSelected} onOpen={openPreview} onContextMenu={openContextMenu} onVisible={handleVisibleMedia} onEndReached={() => void loadMoreMedia()} onSelectMany={setSelected} editMode={editMode} view={homeView} cardSize={thumbnailSize} hasMore={canLoadMore} loadingMore={loadingMore} groupByMonth={homeView==='time' && (sortBy === 'fileTime' || sortBy === 'capturedAt')} capturedTime={sortBy === 'capturedAt'} />}{(sortBy==='fileTime' || sortBy==='capturedAt') && <LibraryTimeAxis months={timelineMonths} anchor={timeAnchor} onJump={jumpMonth} onReset={()=>jumpMonthReset()}/>}</div><div className="batch-bar selection-bar"><div className="selection-context"><div><span className="edit-mode-control"><span>编辑模式</span><ToggleSwitch checked={editMode} onChange={()=>setEditMode(value=>!value)} label="编辑模式"/></span><span className="selection-count">{selected.size ? `已选择 ${selected.size} 项` : '未选择媒体'}</span><span className="edit-mode-help"><ActionButton className="edit-mode-info" aria-label="编辑模式说明" aria-describedby="edit-mode-tip">?</ActionButton><span id="edit-mode-tip" role="tooltip">关闭：点击空白处清空选择项。<br/>开启：点击空白处不清空选择项，多选操作反选项目，编辑操作成功后清空选择项</span></span></div><small>{editMode?'拖动空白处框选 · 框选 / Shift 多选可反选':'拖动空白处框选 · Ctrl / Shift 多选'}</small></div><ActionButton className="ghost" disabled={!selected.size} onClick={() => addSelectedToNamedAlbum()}>加入相册</ActionButton><ActionButton className="primary" disabled={!selected.size} onClick={() => openTagDialog()}>编辑标签</ActionButton><ActionButton className="ghost" disabled={!selected.size} onClick={() => setExporting({ mediaIds: [...selected] })}>导出</ActionButton><ActionButton className="ghost" disabled={!selected.size} onClick={() => hideSelectedMedia()}>隐藏</ActionButton><ActionButton className="ghost" disabled={!selected.size} onClick={() => deleteSelectedMedia()}>删除</ActionButton></div></section></MediaActivity.Provider>}
+       <div className="section-head library-heading"><div><h2>{t("图库")}</h2><p className="page-summary">{viewStats.total}{t("项 · 照片")}{viewStats.photo}{t("· 视频")}{viewStats.video}</p></div><div className="section-actions"><ActionButton className="ghost import-entry" title={t("选择文件导入，也可Ctrl+V粘贴或拖入文件夹")} onClick={()=>requestImport('files')}>{t("＋ 导入")}</ActionButton><div className="filter-group"><ActionButton className={mediaFilter === 'all' ? 'active' : ''} onClick={() => setMediaFilter('all')}>{t("全部")}</ActionButton><ActionButton className={mediaFilter === 'photo' ? 'active' : ''} onClick={() => setMediaFilter('photo')}>{t("照片")}</ActionButton><ActionButton className={mediaFilter === 'video' ? 'active' : ''} onClick={() => setMediaFilter('video')}>{t("视频")}</ActionButton></div></div></div>
+       <div ref={searchBuilderRef} className="search-builder" onClick={() => setSearchMenuOpen(true)}><span className="search-icon">⌕</span>{searchChips.map((chip) => <SearchChip key={chip.id} label={chip.untagged?t("标签：{0}", [chip.type==='tag'?t("无"):t("有")]):`${chip.type === 'file' ? t("文件名包含") : chip.type === 'excludeFile' ? t("文件名不包含") : chip.type === 'extension' ? t("文件格式") : chip.type === 'tag' ? t("标签包含") : t("标签排除")}：${chip.value}`} value={chip.value} onRemove={()=>removeSearchChip(chip.id)}/>)}<span className="search-input-wrap">{searchModeSelected && <span className="search-prefix">{searchMode === 'file' ? t("文件名包含") : searchMode === 'excludeFile' ? t("文件名不包含") : searchMode === 'extension' ? t("文件格式") : searchMode === 'tag' ? t("标签包含") : t("标签排除")}：</span>}<input ref={searchInputRef} value={searchInput} title={searchInput||undefined} onFocus={handleSearchFocus} onChange={(event) => { const value = event.target.value; setSearchInput(value); setSearchMenuOpen(true); setTagSuggestionIndex(0); if (!searchModeSelected) setQuery(value); }} onKeyDown={handleSearchKeyDown} placeholder={searchModeSelected ? t("输入后按回车") : t("搜索照片、视频或标签…")} />{!searchModeSelected && searchMenuOpen && <SearchTypeMenu state={searchTypes}/>}{searchMenuOpen && searchModeSelected && searchOptions().length > 0 && <div className="search-tag-suggestions" role="listbox" aria-label={searchMode==='file'||searchMode==='excludeFile'?t("文件名建议"):searchMode==='extension'?t("文件格式建议"):t("标签建议")} onClick={(event) => event.stopPropagation()}>{searchOptions().map((option,index)=><ActionButton className={index===tagSuggestionIndex?'active':''} role="option" aria-selected={index===tagSuggestionIndex} key={option.untagged?'__untagged__':option.name} title={option.untagged?t("没有任何标签的媒体"):option.label} onClick={()=>selectSearchSuggestion(option.name,option.untagged)}>{option.label}</ActionButton>)}</div>}</span></div>
+       <div className="home-view-toolbar"><label className="thumbnail-size">{t("缩略图")}<input aria-label={t("缩略图大小")} type="range" min="105" max="320" step="1" value={homeView==='list'?105:thumbnailSize} onChange={(event)=>{const value=Number(event.target.value);if(value<110)setHomeView('list');else{if(homeView==='list')setHomeView(homeGridView);setThumbnailSize(Math.max(110,value));}}}/></label><div className="page-actions"><select className="view-select" aria-label={t("视图切换")} value={homeView} onChange={(event)=>chooseHomeView(event.target.value as typeof homeView)}><option value="immersive">{t("默认视图")}</option><option value="time">{t("时间视图")}</option><option value="masonry">{t("瀑布视图")}</option><option value="list">{t("列表")}</option></select><div ref={sortControlRef} className="sort-control"><ActionButton className="ghost sort-label" onClick={() => setSortMenuOpen((open) => !open)} aria-haspopup="listbox" aria-expanded={sortMenuOpen}>{t(sortLabels[sortBy])}</ActionButton><ActionButton className="ghost sort-direction" onClick={() => setSortDirection((current) => current === 'desc' ? 'asc' : 'desc')} title={sortDirection === 'desc' ? t("当前倒序，点击切换为正序") : t("当前正序，点击切换为倒序")} aria-label={sortDirection === 'desc' ? t("倒序，点击切换为正序") : t("正序，点击切换为倒序")}>{sortDirection === 'desc' ? '↓' : '↑'}</ActionButton>{sortMenuOpen && <div className="sort-menu" role="listbox">{(Object.keys(sortLabels) as SortBy[]).map((option) => <ActionButton key={option} className={sortBy === option ? 'active' : ''} role="option" aria-selected={sortBy === option} onClick={() => { setSortBy(option); setSortMenuOpen(false); }}>{t(sortLabels[option])}</ActionButton>)}</div>}</div></div></div>
+       <div className="library-browser">{timeSeeking||timeSeekError?<div className="timeline-position-state" role="status" aria-live="polite" aria-busy={timeSeeking} style={{'--preview-card-size':`${thumbnailSize}px`} as React.CSSProperties}><h3>{timeAnchor?timeAnchor.replace('-',t("年"))+t("月"):t("图库起点")}</h3>{timeSeekError?<><p>{timeSeekError}</p><ActionButton className="ghost" onClick={()=>timeAnchor?jumpMonth(timeAnchor):jumpMonthReset()}>{t("重试")}</ActionButton></>:<><p>{t("正在加载该位置的媒体…")}</p><div className="timeline-position-skeleton" aria-hidden="true">{Array.from({length:24},(_,index)=><span key={index}/>)}</div></>}</div>:media.length === 0 ? <div className="empty"><div className="empty-icon">▧</div><h3>{query.trim() || searchChips.length ? t("没有匹配媒体") : t("还没有媒体")}</h3><p>{query.trim() || searchChips.length ? t("尝试更换文件名或标签。") : t("添加一个本地目录开始建立图库。")}</p>{!query.trim() && searchChips.length === 0 && <ActionButton className="primary" onClick={() => addFolder()}>{t("添加图库目录")}</ActionButton>}</div> : <GroupedMediaGrid selectionSource={{...mediaRequest(),scope:'library',query:mediaRequest().query??''}} tagRevision={organizationRevision} monthCounts={Object.fromEntries(timelineMonths.map(row=>[`${row.month.slice(0,4)}年${Number(row.month.slice(5))}月`,row.count]))} windowKey={mediaWindow.current.key} startOffset={mediaStart} onStartReached={()=>void loadPreviousMedia()} items={media} thumbnails={thumbnails} selected={selected} onToggle={toggleSelected} onOpen={openPreview} onContextMenu={openContextMenu} onVisible={handleVisibleMedia} onEndReached={() => void loadMoreMedia()} onSelectMany={setSelected} editMode={editMode} view={homeView} cardSize={thumbnailSize} hasMore={canLoadMore} loadingMore={loadingMore} groupByMonth={homeView==='time' && (sortBy === 'fileTime' || sortBy === 'capturedAt')} capturedTime={sortBy === 'capturedAt'} />}{(sortBy==='fileTime' || sortBy==='capturedAt') && <LibraryTimeAxis months={timelineMonths} anchor={timeAnchor} onJump={jumpMonth} onReset={()=>jumpMonthReset()}/>}</div><div className="batch-bar selection-bar"><div className="selection-context"><div><span className="edit-mode-control"><span>{t("编辑模式")}</span><ToggleSwitch checked={editMode} onChange={()=>setEditMode(value=>!value)} label={t("编辑模式")}/></span><span className="selection-count">{selected.size ? t("已选择 {0} 项", [selected.size]) : t("未选择媒体")}</span><span className="edit-mode-help"><ActionButton className="edit-mode-info" aria-label={t("编辑模式说明")} aria-describedby="edit-mode-tip">?</ActionButton><span id="edit-mode-tip" role="tooltip">{t("关闭：点击空白处清空选择项。")}<br/>{t("开启：点击空白处不清空选择项，多选操作反选项目，编辑操作成功后清空选择项")}</span></span></div><small>{editMode?t("拖动空白处框选 · 框选 / Shift 多选可反选"):t("拖动空白处框选 · Ctrl / Shift 多选")}</small></div><ActionButton className="ghost" disabled={!selected.size} onClick={() => addSelectedToNamedAlbum()}>{t("加入相册")}</ActionButton><ActionButton className="primary" disabled={!selected.size} onClick={() => openTagDialog()}>{t("编辑标签")}</ActionButton><ActionButton className="ghost" disabled={!selected.size} onClick={() => setExporting({ mediaIds: [...selected] })}>{t("导出")}</ActionButton><ActionButton className="ghost" disabled={!selected.size} onClick={() => hideSelectedMedia()}>{t("隐藏")}</ActionButton><ActionButton className="ghost" disabled={!selected.size} onClick={() => deleteSelectedMedia()}>{t("删除")}</ActionButton></div></section></MediaActivity.Provider>}
       {visitedPages.has('albums') && <div className="page-host" hidden={active!=='albums'}><MediaActivity.Provider value={active==='albums'}><AlbumsPage onSortChange={setAlbumSort} onSelectMany={setSelected} onClear={clearSelection} onLoadMoreReady={registerAlbumMore} albums={albums} tags={tags} thumbnails={thumbnails} selected={selected} onToggle={toggleSelected} onOpen={openPreview} onVisible={handleVisibleMedia} onContextMenu={openContextMenu} onChanged={refreshTagChanges} onMediaChange={setAlbumMedia} onAlbumChange={handleAlbumChange} onExportAlbum={(id) => setExporting({ albumId: id })} /></MediaActivity.Provider></div>}
       {visitedPages.has('tags') && <div className="page-host" hidden={active!=='tags'}><MediaActivity.Provider value={active==='tags'}><TagsPage onSortChange={setTagSort} onSelectMany={setSelected} onClear={clearSelection} onTagChange={setPlaybackTagId} onLoadMoreReady={registerTagMore} tags={tags} thumbnails={thumbnails} selected={selected} onChanged={refreshTagChanges} onMediaChange={setTagMedia} onSelect={toggleSelected} onOpen={openPreview} onVisible={handleVisibleMedia} onContextMenu={openContextMenu} /></MediaActivity.Provider></div>}
-      {albumEditor && <LibraryFormDialog key={albumEditor === 'create' ? 'new' : albumEditor.id} title={albumEditor === 'create' ? '新建相册' : '编辑相册'} initialName={albumEditor === 'create' ? '' : albumEditor.name} initialDescription={albumEditor === 'create' ? '' : albumEditor.description} nameLabel="相册名称" maxLength={200} onClose={() => setAlbumEditor(null)} onSave={async (name, description) => {
+      {albumEditor && <LibraryFormDialog key={albumEditor === 'create' ? 'new' : albumEditor.id} title={albumEditor === 'create' ? t("新建相册") : t("编辑相册")} initialName={albumEditor === 'create' ? '' : albumEditor.name} initialDescription={albumEditor === 'create' ? '' : albumEditor.description} nameLabel={t("相册名称")} maxLength={200} onClose={() => setAlbumEditor(null)} onSave={async (name, description) => {
         if (albumEditor === 'create') await window.lumina.command({ type: 'albums.create', name, description });
         else await window.lumina.command({ type: 'albums.update', id: albumEditor.id, name, description });
-        await refresh(); setMessage(albumEditor === 'create' ? '相册已创建' : '相册已更新');
+        await refresh(); setMessage(albumEditor === 'create' ? t("相册已创建") : t("相册已更新"));
       }} />}
       {albumPickerMediaIds && <AlbumPickerDialog albums={albums.filter((album) => album.kind !== 'smart' && album.kind!=='folder')} mediaCount={albumPickerMediaIds.length} onClose={() => setAlbumPickerMediaIds(null)} onSave={async (ids) => {
         for (const id of ids) for(let offset=0;offset<albumPickerMediaIds.length;offset+=1000) await window.lumina.command({ type: 'albums.addMedia', id, mediaIds: albumPickerMediaIds.slice(offset,offset+1000) });
         await refreshTagChanges();
-        clearSelection(); setMessage(`已加入 ${ids.length} 个相册`);
+        clearSelection(); setMessage(t("已加入 {0} 个相册", [ids.length]));
       }} />}
-      {albumDeleting && <LibraryConfirmDialog title="删除相册" description={`删除相册「${albumDeleting.name}」？仅移除相册和媒体引用，保留原文件。`} onClose={() => setAlbumDeleting(null)} onConfirm={async () => {
+      {albumDeleting && <LibraryConfirmDialog title={t("删除相册")} description={t("删除相册「{0}」？仅移除相册和媒体引用，保留原文件。", [albumDeleting.name])} onClose={() => setAlbumDeleting(null)} onConfirm={async () => {
         await window.lumina.command({ type: 'albums.delete', id: albumDeleting.id });
         if (selectedAlbumId === albumDeleting.id) { setSelectedAlbumId(null); setAlbumMedia([]); }
-        await refresh(); setMessage('相册已删除');
+        await refresh(); setMessage(t("相册已删除"));
       }} />}
-      {active === 'settings' && <section className="content"><div className="section-head"><div><h2>{settingsSection === 'general' ? '设置 · 常规' : settingsSection === 'theme' ? '设置 · 主题' : settingsSection === 'account' ? '设置 · 账号管理' : '设置 · 关于'}</h2><p>{settingsSection === 'general' ? '管理图库目录、索引状态和本地任务。' : settingsSection === 'theme' ? '管理内置主题与自定义主题。' : settingsSection === 'account' ? '本机账号功能将在后续版本接入。' : '光匣 Lumina 本地照片与视频管理器。'}</p></div></div>{settingsSection === 'general' ? <div className="general-settings-stack"><DirectorySettings roots={roots} mediaCount={mediaStats.total} albumCount={albums.length} busy={busy} taskBusyId={taskBusyId} onAdd={addFolder} onSetup={root=>setDirectorySetup({absolutePath:root.absolutePath,root})} onTags={root=>openTagDialog(root)} onScan={rescanRoot} onToggle={setRootEnabled} onRemove={removeRoot}/><ImportSettings/><CacheSettings/><OrganizationSettings onChanged={refreshTagChanges} /><TaskManager tasks={tasks} onRefresh={refreshTasks} onRetryThumbnail={retryTask} /></div> : <div className="settings-card"><div><strong>{settingsSection === 'theme' ? 'Lumina Light' : settingsSection === 'account' ? '本机管理员' : '光匣 Lumina'}</strong><p>{settingsSection === 'theme' ? '当前主题 · 蓝白基础主题' : settingsSection === 'account' ? '本地数据由当前 Windows 用户管理。' : '开发阶段 M2 · 本地整理'}</p></div>{settingsSection === 'theme' && <ActionButton className="ghost" onClick={() => setMessage('自定义主题将在后续版本接入')}>管理主题</ActionButton>}</div>}</section>}
-      <ImportController/>{directorySetup && <DirectorySetupDialog {...directorySetup} tags={tags} onClose={()=>setDirectorySetup(null)} onSaved={id=>{if(id){window.dispatchEvent(new CustomEvent('lumina-job-started',{detail:{id,kind:'directory-rules',began:Date.now()}}));setJobId(id);}void refresh();setMessage(id?(directorySetup.root?'目录规则已保存，正在后台应用于已索引媒体':'目录已添加，正在后台扫描并应用规则'):'目录设置已保存');}}/>}
+      {active === 'settings' && <section className="content"><div className="section-head"><div><h2>{settingsSection === 'general' ? t("设置 · 常规") : settingsSection === 'theme' ? t("设置 · 主题") : settingsSection === 'account' ? t("设置 · 账号管理") : t("设置 · 关于")}</h2><p>{settingsSection === 'general' ? t("管理图库目录、索引状态和本地任务。") : settingsSection === 'theme' ? t("管理内置主题与自定义主题。") : settingsSection === 'account' ? t("本机账号功能将在后续版本接入。") : t("光匣 Lumina 本地照片与视频管理器。")}</p></div></div>{settingsSection === 'general' ? <div className="general-settings-stack"><LanguageSettings/><DirectorySettings roots={roots} mediaCount={mediaStats.total} albumCount={albums.length} busy={busy} taskBusyId={taskBusyId} onAdd={addFolder} onSetup={root=>setDirectorySetup({absolutePath:root.absolutePath,root})} onTags={root=>openTagDialog(root)} onScan={rescanRoot} onToggle={setRootEnabled} onRemove={removeRoot}/><ImportSettings/><CacheSettings/><OrganizationSettings onChanged={refreshTagChanges} /><TaskManager tasks={tasks} onRefresh={refreshTasks} onRetryThumbnail={retryTask} /></div> : <div className="settings-card"><div><strong>{settingsSection === 'theme' ? 'Lumina Light' : settingsSection === 'account' ? t("本机管理员") : t("光匣 Lumina")}</strong><p>{settingsSection === 'theme' ? t("当前主题 · 蓝白基础主题") : settingsSection === 'account' ? t("本地数据由当前 Windows 用户管理。") : t("开发阶段 M2 · 本地整理")}</p></div>{settingsSection === 'theme' && <ActionButton className="ghost" onClick={() => setMessage(t("自定义主题将在后续版本接入"))}>{t("管理主题")}</ActionButton>}</div>}</section>}
+      <ImportController/>{directorySetup && <DirectorySetupDialog {...directorySetup} tags={tags} onClose={()=>setDirectorySetup(null)} onSaved={id=>{if(id){window.dispatchEvent(new CustomEvent('lumina-job-started',{detail:{id,kind:'directory-rules',began:Date.now()}}));setJobId(id);}void refresh();setMessage(id?(directorySetup.root?t("目录规则已保存，正在后台应用于已索引媒体"):t("目录已添加，正在后台扫描并应用规则")):t("目录设置已保存"));}}/>}
       {hiddenReason && <HiddenReasonDialog reason={hiddenReason} onClose={()=>setHiddenReason(null)} onShow={()=>applyVisibility(hiddenReason.ids,false,hiddenReason.byMedia)} onEdit={()=>{const ids=hiddenReason.ids;setHiddenReason(null);void openTagDialog(undefined,ids);}}/>}
-      {tagDialogMode && <div className="dialog-backdrop" onClick={closeTagDialog}><section ref={tagDialogRef} className="tag-dialog" role="dialog" aria-modal="true" aria-label="编辑标签" onClick={(event) => event.stopPropagation()}><div className="dialog-head"><div><strong>编辑标签</strong><p>已选择 {tagTargetIds.length} 项媒体</p>{tagRoot && <p className="dialog-hint" title={tagRoot.absolutePath}>目录：{tagRoot.label} · 包含子目录和隐藏/停用项目，不含回收站</p>}</div><ActionButton className="icon-button" disabled={busy} onClick={closeTagDialog}>×</ActionButton></div><div className="tag-dialog-section"><label>当前标签</label>{tagDialogLoading ? <p className="dialog-hint">正在读取标签…</p> : tagDialogTags.length === 0 ? <p className="dialog-hint">选中媒体暂无标签</p> : <div className="dialog-tag-list">{tagDialogTags.map((tag) => <span className={tag.count === tagTargetIds.length ? 'dialog-tag common' : 'dialog-tag partial'} key={tag.name}>#{tagLabel(tag)}{tagTargetIds.length > 1 && <small>{tag.count}/{tagTargetIds.length}</small>}{<ActionButton disabled={tag.count !== tagTargetIds.length || busy || Boolean(pendingTagJob)} title={tag.count === tagTargetIds.length ? '移除所有选中媒体的该标签' : '只有所有选中媒体共有的标签才能移除'} onClick={() => removeTagFromDialog(tag.name)}>×</ActionButton>}</span>)}</div>}</div>{<div className="dialog-form"><TagAutocomplete value={tagDialogName} onChange={setTagDialogName} onCommit={(value)=>void addTagFromDialog(value)} suggestions={matchingTags(tagDialogName,true)} allTags={orderedTags().filter(tag=>!tag.directory)} onCreateChild={setTagChildParent} disabled={busy || Boolean(pendingTagJob)}/><label className="tag-continuous"><input type="checkbox" checked={continuousTags} onChange={(event)=>setContinuousTags(event.target.checked)}/>连续添加</label><ActionButton className="primary" disabled={busy || Boolean(pendingTagJob) || !tagDialogName.trim()} onClick={() => addTagFromDialog()}>添加</ActionButton></div>}{tagTargetIds.length>1 && <p className="dialog-hint tag-editor-selection-hint">只有所有选中媒体都拥有的共同标签可以移除。</p>}<div className="dialog-footer tag-editor-footer"><ActionButton className="ghost" disabled={busy} onClick={closeTagDialog}>完成</ActionButton></div></section></div>}
+      {tagDialogMode && <div className="dialog-backdrop" onClick={closeTagDialog}><section ref={tagDialogRef} className="tag-dialog" role="dialog" aria-modal="true" aria-label={t("编辑标签")} onClick={(event) => event.stopPropagation()}><div className="dialog-head"><div><strong>{t("编辑标签")}</strong><p>{t("已选择")}{tagTargetIds.length}{t("项媒体")}</p>{tagRoot && <p className="dialog-hint" title={tagRoot.absolutePath}>{t("目录：")}{tagRoot.label}{t("· 包含子目录和隐藏/停用项目，不含回收站")}</p>}</div><ActionButton className="icon-button" disabled={busy} onClick={closeTagDialog}>×</ActionButton></div><div className="tag-dialog-section"><label>{t("当前标签")}</label>{tagDialogLoading ? <p className="dialog-hint">{t("正在读取标签…")}</p> : tagDialogTags.length === 0 ? <p className="dialog-hint">{t("选中媒体暂无标签")}</p> : <div className="dialog-tag-list">{tagDialogTags.map((tag) => <span className={tag.count === tagTargetIds.length ? 'dialog-tag common' : 'dialog-tag partial'} key={tag.name}>#{tagLabel(tag)}{tagTargetIds.length > 1 && <small>{tag.count}/{tagTargetIds.length}</small>}{<ActionButton disabled={tag.count !== tagTargetIds.length || busy || Boolean(pendingTagJob)} title={tag.count === tagTargetIds.length ? t("移除所有选中媒体的该标签") : t("只有所有选中媒体共有的标签才能移除")} onClick={() => removeTagFromDialog(tag.name)}>×</ActionButton>}</span>)}</div>}</div>{<div className="dialog-form"><TagAutocomplete value={tagDialogName} onChange={setTagDialogName} onCommit={(value)=>void addTagFromDialog(value)} suggestions={matchingTags(tagDialogName,true)} allTags={orderedTags().filter(tag=>!tag.directory)} onCreateChild={setTagChildParent} disabled={busy || Boolean(pendingTagJob)}/><label className="tag-continuous"><input type="checkbox" checked={continuousTags} onChange={(event)=>setContinuousTags(event.target.checked)}/>{t("连续添加")}</label><ActionButton className="primary" disabled={busy || Boolean(pendingTagJob) || !tagDialogName.trim()} onClick={() => addTagFromDialog()}>{t("添加")}</ActionButton></div>}{tagTargetIds.length>1 && <p className="dialog-hint tag-editor-selection-hint">{t("只有所有选中媒体都拥有的共同标签可以移除。")}</p>}<div className="dialog-footer tag-editor-footer"><ActionButton className="ghost" disabled={busy} onClick={closeTagDialog}>{t("完成")}</ActionButton></div></section></div>}
 {preview && <MediaViewer onMediaAction={viewerMediaAction} item={preview} items={previewItems} source={playbackSource} revision={playbackRevision} onWindowChange={setViewerWindow} slideshow={slideshow} idle={idlePlayback} onChange={setPreview} onClose={() => { setPreview(null); setSlideshow(false); }} onDelete={(id,permanent=false) => { if (active === 'trash') setTrashPurgeIds([id]); else {setForcePermanent(permanent);setDeleteIds([id]);} }} onExport={(ids) => setExporting({ mediaIds: ids })} onNearEnd={() => { if (active === 'library') void loadMoreMedia(); else if(active==='albums')albumMoreRef.current();else if(active==='tags')tagMoreRef.current(); }} />}
       {detailMedia && <MediaDetailsDialog item={detailMedia} onClose={() => setDetailMedia(null)} />}
-      {contextMenu && <div ref={contextMenuRef} className="context-menu" style={{ left: contextMenu.x, top: contextMenu.y }} onMouseDown={(event) => event.stopPropagation()}><ActionButton onClick={() => { openPreview(contextMenu.item); setContextMenu(null); }}>打开</ActionButton><ActionButton onClick={() => copyContextMedia()}>复制{contextMenu.item.kind === 'video' ? '文件' : '图片'}</ActionButton><ActionButton onClick={() => startSlideshow(contextMenu.item)}>幻灯片</ActionButton><ActionButton onClick={() => addContextMediaToAlbum()}>加入相册…</ActionButton>{active==='albums' && m2Album?.kind!=='folder' && m2Album && <ActionButton onClick={()=>setCover(contextMenu.item.id)}>设置为封面</ActionButton>}<ActionButton onClick={() => updateContextTag('add')}>编辑标签…</ActionButton><ActionButton onClick={() => hideContextMedia()}>{active==='hidden'?'取消隐藏':'隐藏'}</ActionButton><ActionButton onClick={exportContextMedia}>导出{contextMenu.item.kind === 'video' ? '视频' : '原图'}…</ActionButton><ActionButton onClick={() => openDetails(contextMenu.item)}>详情</ActionButton><ActionButton onClick={async ()=>{await window.lumina.native({action:'show-file',mediaIds:[contextMenu.item.id]}).catch(error=>setMessage(userErrorMessage(error)));setContextMenu(null);}}>在资源管理器中打开</ActionButton><ActionButton className="danger" onClick={() => removeContextMedia()}>删除</ActionButton></div>}
+      {contextMenu && <div ref={contextMenuRef} className="context-menu" style={{ left: contextMenu.x, top: contextMenu.y }} onMouseDown={(event) => event.stopPropagation()}><ActionButton onClick={() => { openPreview(contextMenu.item); setContextMenu(null); }}>{t("打开")}</ActionButton><ActionButton onClick={() => copyContextMedia()}>{t("复制")}{contextMenu.item.kind === 'video' ? t("文件") : t("图片")}</ActionButton><ActionButton onClick={() => startSlideshow(contextMenu.item)}>{t("幻灯片")}</ActionButton><ActionButton onClick={() => addContextMediaToAlbum()}>{t("加入相册…")}</ActionButton>{active==='albums' && m2Album?.kind!=='folder' && m2Album && <ActionButton onClick={()=>setCover(contextMenu.item.id)}>{t("设置为封面")}</ActionButton>}<ActionButton onClick={() => updateContextTag('add')}>{t("编辑标签…")}</ActionButton><ActionButton onClick={() => hideContextMedia()}>{active==='hidden'?t("取消隐藏"):t("隐藏")}</ActionButton><ActionButton onClick={exportContextMedia}>{t("导出")}{contextMenu.item.kind === 'video' ? t("视频") : t("原图")}…</ActionButton><ActionButton onClick={() => openDetails(contextMenu.item)}>{t("详情")}</ActionButton><ActionButton onClick={async ()=>{await window.lumina.native({action:'show-file',mediaIds:[contextMenu.item.id]}).catch(error=>setMessage(userErrorMessage(error)));setContextMenu(null);}}>{t("在资源管理器中打开")}</ActionButton><ActionButton className="danger" onClick={() => removeContextMedia()}>{t("删除")}</ActionButton></div>}
       {visitedPages.has('hidden') && <div className="page-host" hidden={active!=='hidden'}><MediaActivity.Provider value={active==='hidden'}><HiddenMediaPage active={active==='hidden'} revision={organizationRevision} editMode={editMode} tags={tags} onClear={clearSelection} onSelectMany={setSelected} onScopeChange={setHiddenSort} onMediaChange={extraHandlers.hidden!} thumbnails={thumbnails} selected={selected} onToggle={toggleSelected} onOpen={openPreview} onVisible={handleVisibleMedia} onContextMenu={openContextMenu}/></MediaActivity.Provider></div>}
       {(['trash','geo','duplicates'] as const).filter((page)=>visitedPages.has(page)).map((page)=><div key={page} className="page-host" hidden={active!==page}><MediaActivity.Provider value={active===page}><OrganizationPage onSelectMany={setSelected} active={active===page} page={page} revision={organizationRevision} thumbnails={thumbnails} selected={selected} onToggle={toggleSelected} onOpen={openPreview} onVisible={handleVisibleMedia} onContextMenu={openContextMenu} onMediaChange={extraHandlers[page]!} onChanged={refreshTagChanges} onClear={clearSelection} /></MediaActivity.Provider></div>)}
-      {(active==='hidden' || active==='albums' && m2Album && m2Album.kind!=='folder' || ['tags','geo'].includes(active) && selected.size>0) && <div className="organization-footer">{active==='hidden' && <label className="edit-mode-control">编辑模式<ToggleSwitch checked={editMode} onChange={()=>setEditMode(value=>!value)} label="编辑模式"/></label>}<span>{selected.size?`已选择 ${selected.size} 项`:'未选择媒体'}</span>{active==='albums' && m2Album && <ActionButton className="ghost" disabled={!selected.size} onClick={removeAlbumSelection}>{m2Album.kind==='smart'?'加入排除项':'从此相册移出'}</ActionButton>}<ActionButton className="ghost" disabled={!selected.size} onClick={() => addSelectedToNamedAlbum()}>加入相册</ActionButton><ActionButton className="primary" disabled={!selected.size} onClick={() => openTagDialog()}>编辑标签</ActionButton><ActionButton className="ghost" disabled={!selected.size} onClick={() => setExporting({ mediaIds: [...selected] })}>导出</ActionButton>{active==='hidden' && <ActionButton className="ghost" disabled={!selected.size} onClick={()=>hideSelectedMedia()}>取消隐藏</ActionButton>}<ActionButton className="ghost" disabled={!selected.size} onClick={() => deleteSelectedMedia()}>删除</ActionButton></div>}
+      {(active==='hidden' || active==='albums' && m2Album && m2Album.kind!=='folder' || ['tags','geo'].includes(active) && selected.size>0) && <div className="organization-footer">{active==='hidden' && <label className="edit-mode-control">{t("编辑模式")}<ToggleSwitch checked={editMode} onChange={()=>setEditMode(value=>!value)} label={t("编辑模式")}/></label>}<span>{selected.size?t("已选择 {0} 项", [selected.size]):t("未选择媒体")}</span>{active==='albums' && m2Album && <ActionButton className="ghost" disabled={!selected.size} onClick={removeAlbumSelection}>{m2Album.kind==='smart'?t("加入排除项"):t("从此相册移出")}</ActionButton>}<ActionButton className="ghost" disabled={!selected.size} onClick={() => addSelectedToNamedAlbum()}>{t("加入相册")}</ActionButton><ActionButton className="primary" disabled={!selected.size} onClick={() => openTagDialog()}>{t("编辑标签")}</ActionButton><ActionButton className="ghost" disabled={!selected.size} onClick={() => setExporting({ mediaIds: [...selected] })}>{t("导出")}</ActionButton>{active==='hidden' && <ActionButton className="ghost" disabled={!selected.size} onClick={()=>hideSelectedMedia()}>{t("取消隐藏")}</ActionButton>}<ActionButton className="ghost" disabled={!selected.size} onClick={() => deleteSelectedMedia()}>{t("删除")}</ActionButton></div>}
       {deleteIds && <DeleteDialog ids={deleteIds} forcePermanent={forcePermanent} onClose={() => { setDeleteIds(null); setForcePermanent(false); }} onDone={finishDelete} onJobStarted={(id,mode)=>{setJobId(id);setPendingDeletes((current)=>[...current,{id,mode}]);clearSelection();}} />}
-      {trashPurgeIds && <LibraryConfirmDialog title="永久删除" description={`永久删除 ${trashPurgeIds.length} 项文件？这会从磁盘彻底删除，无法还原。`} onClose={() => setTrashPurgeIds(null)} onConfirm={async () => { if(trashPurgeIds.length>1){const job=await startBackgroundJob({type:'jobs.start',kind:'purge',mediaIds:trashPurgeIds});setJobId(job.id);setPreview(null);return;}const results = await window.lumina.command({ type: 'trash.purge', mediaIds: trashPurgeIds, destination: 'permanent' }); const failed = results.filter((item: any) => !item.ok); if (failed.length) throw new Error(failed.map((item: any) => item.error).join('；')); setPreview(null); await refreshTagChanges(); }} />}
+      {trashPurgeIds && <LibraryConfirmDialog title={t("永久删除")} description={t("永久删除 {0} 项文件？这会从磁盘彻底删除，无法还原。", [trashPurgeIds.length])} onClose={() => setTrashPurgeIds(null)} onConfirm={async () => { if(trashPurgeIds.length>1){const job=await startBackgroundJob({type:'jobs.start',kind:'purge',mediaIds:trashPurgeIds});setJobId(job.id);setPreview(null);return;}const results = await window.lumina.command({ type: 'trash.purge', mediaIds: trashPurgeIds, destination: 'permanent' }); const failed = results.filter((item: any) => !item.ok); if (failed.length) throw new Error(failed.map((item: any) => item.error).join('；')); setPreview(null); await refreshTagChanges(); }} />}
       {tagBatchJob && <JobDialog id={tagBatchJob} onClose={() => {setTagBatchJob(null);void loadTagDialogTags();void refreshTagChanges();}} />}
       {exporting && <ExportDialog {...exporting} includeHidden={active==='hidden'} onStarted={clearSelection} onClose={() => setExporting(null)} />}
       {jobId && <JobDialog id={jobId} onClose={() => setJobId(null)} />}
-      {albumUndo && <div className="toast undo-toast album-undo-toast" role="status"><span>{`${albumUndo.smart?'已排除':'已移出'} ${albumUndo.count} 项 · ${albumUndo.name}`}</span><ActionButton className="ghost" disabled={albumUndoBusy} onClick={undoAlbumSelection}>{albumUndoBusy?'正在撤销…':'撤销'}</ActionButton><ActionButton className="icon-button" disabled={albumUndoBusy} aria-label="关闭撤销提示" onClick={()=>setAlbumUndo(null)}>×</ActionButton></div>}
-      {undoTrashIds.length>0 ? <div className="toast undo-toast" role="status"><span>{undoError || `${undoTrashIds.length} 项已移入软件回收站`}</span><ActionButton className="ghost" disabled={undoBusy} onClick={()=>undoSoftwareDelete()}>{undoBusy?'正在还原…':'撤销删除'}</ActionButton></div> : !albumUndo && message && <div className="toast" role="status">{message}</div>}
+      {albumUndo && <div className="toast undo-toast album-undo-toast" role="status"><span>{t("{0} {1} 项 · {2}", [albumUndo.smart?t("已排除"):t("已移出"), albumUndo.count, albumUndo.name])}</span><ActionButton className="ghost" disabled={albumUndoBusy} onClick={undoAlbumSelection}>{albumUndoBusy?t("正在撤销…"):t("撤销")}</ActionButton><ActionButton className="icon-button" disabled={albumUndoBusy} aria-label={t("关闭撤销提示")} onClick={()=>setAlbumUndo(null)}>×</ActionButton></div>}
+      {undoTrashIds.length>0 ? <div className="toast undo-toast" role="status"><span>{undoError || t("{0} 项已移入软件回收站", [undoTrashIds.length])}</span><ActionButton className="ghost" disabled={undoBusy} onClick={()=>undoSoftwareDelete()}>{undoBusy?t("正在还原…"):t("撤销删除")}</ActionButton></div> : !albumUndo && message && <div className="toast" role="status">{translateMessage(message)}</div>}
       <BackgroundTaskNotice onOpen={setJobId}/>
       {tagChildParent && <TagEditor tag="create" tags={tags} parentId={tagChildParent.id} onClose={()=>setTagChildParent(null)} onSaved={refreshTagChanges}/>}
     </main></div>

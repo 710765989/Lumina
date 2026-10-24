@@ -33,6 +33,24 @@ export function nearbyPlace(latitude: number, longitude: number) {
   // Do not invent an administrative location for remote areas or open sea.
   return distanceKm > 150 ? null : { ...place, distanceKm: Math.round(distanceKm * 10) / 10, placeSource: 'nearby-city' };
 }
+export function geographicKey(media:{fingerprint:string;metadata:Record<string,any>}) {
+  const value=media.metadata;
+  return JSON.stringify([1,media.fingerprint,value.latitude??null,value.longitude??null,...(value.placeSource==='user'?[value.country??'',value.region??'',value.city??'']:[])]);
+}
+export function hasGeographicMetadata(value:Record<string,any>) {
+  return Boolean(value.geoMetadataVersion||value.width||value.format||(Number.isFinite(value.latitude)&&Number.isFinite(value.longitude)));
+}
+export function needsGeographicOrganization(media:{fingerprint:string;metadata:Record<string,any>}) {
+  const value=media.metadata;
+  if(value.geoOrganizationKey===geographicKey(media))return false;
+  if(value.placeSource==='user'&&(value.country||value.city))return true;
+  return !hasGeographicMetadata(value)||(Number.isFinite(value.latitude)&&Number.isFinite(value.longitude));
+}
+export function scannedGeography(metadata:Record<string,any>,previous:Record<string,any>={}) {
+  if(previous.placeSource==='user')return {...metadata,country:previous.country,region:previous.region,city:previous.city,placeSource:'user',distanceKm:null};
+  const place=Number.isFinite(metadata.latitude)&&Number.isFinite(metadata.longitude)?nearbyPlace(metadata.latitude,metadata.longitude):null;
+  return {...metadata,country:place?.country??null,region:place?.region??null,city:place?.city??null,placeSource:place?.placeSource??null,distanceKm:place?.distanceKm??null};
+}
 export async function extractMetadata(file: string) {
   const metadata = await sharp(file, { failOn: 'none' }).metadata();
   let exif: Record<string, any> = {};
@@ -46,6 +64,8 @@ export async function extractMetadata(file: string) {
     capturedAtMs: taken instanceof Date && Number.isFinite(taken.getTime()) ? taken.getTime() : null,
     camera: [exif.Make, exif.Model].filter(Boolean).join(' '), lens: exif.LensModel ?? '',
     iso: exif.ISO ?? null, aperture: exif.FNumber ?? null, exposure: exif.ExposureTime ?? null, focalLength: exif.FocalLength ?? null,
-    ...(Number.isFinite(exif.latitude) && Number.isFinite(exif.longitude) ? { latitude: exif.latitude as number, longitude: exif.longitude as number } : {}),
+    geoMetadataVersion:1,
+    latitude:Number.isFinite(exif.latitude)&&Number.isFinite(exif.longitude)?exif.latitude as number:null,
+    longitude:Number.isFinite(exif.latitude)&&Number.isFinite(exif.longitude)?exif.longitude as number:null,
   };
 }

@@ -1,5 +1,6 @@
 import type { LuminaDatabase } from './index.js';
-import {describeTagGraph,tagParents,type TagNode} from '@lumina/contracts';
+import {describeTagGraph,tagParents,tagReferenceChange,type TagNode} from '@lumina/contracts';
+import {assertSameTagType} from './tag-types.js';
 
 export const tagFamilySql = `WITH RECURSIVE family(ancestor,id) AS (
   SELECT id,id FROM tags UNION SELECT f.ancestor,e.child_id FROM family f JOIN tag_edges e ON e.parent_id=f.id
@@ -7,10 +8,10 @@ export const tagFamilySql = `WITH RECURSIVE family(ancestor,id) AS (
 export function descendantTagIds(db:LuminaDatabase,id:string):string[]{return (db.prepare(`SELECT id FROM (${tagFamilySql}) WHERE ancestor=?`).all(id) as {id:string}[]).map(row=>row.id);}
 export function ancestorTagIds(db:LuminaDatabase,id:string):string[]{return (db.prepare(`WITH RECURSIVE ancestors(id) AS (SELECT id FROM tags WHERE id=? UNION SELECT e.parent_id FROM ancestors a JOIN tag_edges e ON e.child_id=a.id) SELECT id FROM ancestors`).all(id) as {id:string}[]).map(row=>row.id);}
 export function tagHierarchy(db:LuminaDatabase){
-  const rows=db.prepare('SELECT id,name,english_name AS englishName FROM tags ORDER BY name COLLATE NOCASE,id').all() as {id:string;name:string;englishName:string}[];
+  const rows=db.prepare('SELECT id,name,english_name AS englishName,root_reference AS rootReference FROM tags ORDER BY name COLLATE NOCASE,id').all() as {id:string;name:string;englishName:string;rootReference:number}[];
   const edges=db.prepare('SELECT parent_id AS parentId,child_id AS childId FROM tag_edges ORDER BY parent_id').all() as {parentId:string;childId:string}[];
   const parents=new Map<string,string[]>();for(const edge of edges)parents.set(edge.childId,[...(parents.get(edge.childId)??[]),edge.parentId]);
-  return describeTagGraph(rows.map(row=>({...row,parentIds:parents.get(row.id)??[]})));
+  return describeTagGraph(rows.map(row=>({...row,rootReference:Boolean(row.rootReference),parentIds:parents.get(row.id)??[]})));
 }
 export function inheritTagAncestors(db:LuminaDatabase,mediaScope?:string|readonly string[]){
   if(Array.isArray(mediaScope) && !mediaScope.length)return;
@@ -31,6 +32,7 @@ export function inheritTagAncestors(db:LuminaDatabase,mediaScope?:string|readonl
 
 export function setTagParents(db:LuminaDatabase,id:string,parentIds:string[]){
   return db.transaction(()=>{
+    assertSameTagType(db,id,parentIds,'parent');
     const tree=tagHierarchy(db);if(!tree.some(row=>row.id===id))throw new Error('标签不存在');const parents=[...new Set(parentIds)].sort();
     const previous=tree.find(row=>row.id===id)!.parentIds;if(JSON.stringify(previous)===JSON.stringify(parents))return;
     describeTagGraph(tree.map(row=>row.id===id?{...row,parentIds:parents}:row));
@@ -41,13 +43,14 @@ export function setTagParents(db:LuminaDatabase,id:string,parentIds:string[]){
 }
 export function reparentTag(db:LuminaDatabase,id:string,parentId:string|null){return setTagParents(db,id,parentId?[parentId]:[]);}
 export function addTagReference(db:LuminaDatabase,id:string,parentId:string){const tag=tagHierarchy(db).find(row=>row.id===id);if(!tag)throw new Error('标签不存在');return setTagParents(db,id,[...tag.parentIds,parentId]);}
-export function moveTagReference(db:LuminaDatabase,id:string,fromParentId:string|null,parentId:string|null){
+export function moveTagReference(db:LuminaDatabase,id:string,fromParentId:string|null,parentId:string|null,copy=false){return db.transaction(()=>{
   if(db.prepare('SELECT 1 FROM directory_rules WHERE tag_id=?').get(id))throw new Error('目录标签的层级由目录规则管理，请在目录设置中修改');
   const tag=tagHierarchy(db).find(row=>row.id===id);if(!tag)throw new Error('标签不存在');
-  if(fromParentId?!tag.parentIds.includes(fromParentId):tag.parentIds.length>0)throw new Error('标签引用已变化，请刷新后重试');
-  return setTagParents(db,id,[...tag.parentIds.filter(parent=>parent!==fromParentId),...(parentId?[parentId]:[])]);
-}
-export function removeTagReference(db:LuminaDatabase,id:string,parentId:string){
+  const next=tagReferenceChange(tag,fromParentId,parentId,copy);setTagParents(db,id,next.parentIds);
+  db.prepare('UPDATE tags SET root_reference=? WHERE id=?').run(next.rootReference?1:0,id);
+})();}
+export function removeTagReference(db:LuminaDatabase,id:string,parentId:string|null){
+  if(parentId===null){const tag=tagHierarchy(db).find(row=>row.id===id);if(!tag)throw new Error('标签不存在');if(!tag.rootReference||!tag.parentIds.length)throw new Error('顶级标签没有可删除的额外引用');db.prepare('UPDATE tags SET root_reference=0 WHERE id=?').run(id);return;}
   if(db.prepare('SELECT 1 FROM directory_edges WHERE parent_id=? AND child_id=?').get(parentId,id))throw new Error('该引用由目录规则管理，请在目录设置中修改');
   const tag=tagHierarchy(db).find(row=>row.id===id);if(!tag)throw new Error('标签不存在');if(!tag.parentIds.includes(parentId))throw new Error('标签引用已不存在');
   return setTagParents(db,id,tag.parentIds.filter(parent=>parent!==parentId));
@@ -55,7 +58,7 @@ export function removeTagReference(db:LuminaDatabase,id:string,parentId:string){
 // A shared descendant is never included in cascade deletion while an outside parent survives.
 export function exclusiveTagBranch(db:LuminaDatabase,id:string):string[]{
   const tree=tagHierarchy(db),descendants=new Set(descendantTagIds(db,id)),deleted=new Set([id]);let changed=true;
-  while(changed){changed=false;for(const row of tree)if(descendants.has(row.id) && !deleted.has(row.id) && row.parentIds.length && row.parentIds.every(parent=>deleted.has(parent))){deleted.add(row.id);changed=true;}}
+  while(changed){changed=false;for(const row of tree)if(descendants.has(row.id) && !deleted.has(row.id) && !row.rootReference && row.parentIds.length && row.parentIds.every(parent=>deleted.has(parent))){deleted.add(row.id);changed=true;}}
   return [...deleted];
 }
 export function tagDeletionPreview(db:LuminaDatabase,id:string){

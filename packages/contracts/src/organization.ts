@@ -2,7 +2,10 @@ import { z } from 'zod';
 
 const id = z.string().min(1).max(128);
 const ids = z.array(id).min(1).max(10000);
+const geoScope={country:z.string().optional(),region:z.string().optional(),city:z.string().optional(),noLocation:z.boolean().default(false)};
+const geoSearch={searchLanguage:z.enum(['zh-CN','en','ja']).optional(),query:z.string().max(200).default(''),fileNames:z.array(z.string().max(200)).max(20).optional(),excludeFileNames:z.array(z.string().max(200)).max(20).optional(),extensions:z.array(z.string().regex(/^(?:\*?\.)?[a-zA-Z0-9]{1,12}$/u)).max(20).optional(),tagNames:z.array(z.string().max(100)).max(20).optional(),excludeTagNames:z.array(z.string().max(100)).max(20).optional(),untaggedOnly:z.boolean().optional(),excludeUntagged:z.boolean().optional(),sortBy:z.enum(['fileTime','capturedAt','name','size']).optional(),sort:z.enum(['asc','desc']).optional(),timeFromMs:z.number().finite().optional(),timeBeforeMs:z.number().finite().optional()};
 const paging = { limit: z.number().int().min(1).max(1000).default(200), offset: z.number().int().min(0).default(0) };
+const coverSort={sortBy:z.enum(['fileTime','capturedAt','name','size']).default('fileTime'),sort:z.enum(['asc','desc']).default('desc')};
 export const smartRuleSchema = z.object({
   relation: z.enum(['AND', 'OR']).default('AND'),
   tags: z.array(id).max(100), notTags: z.array(id).max(100).default([]),
@@ -10,6 +13,7 @@ export const smartRuleSchema = z.object({
 });
 export type SmartRule = z.infer<typeof smartRuleSchema>;
 export const organizationCommandSchema = z.discriminatedUnion('type', [
+  z.object({type:z.literal('text.japaneseReadings'),texts:z.array(z.string().max(1000)).max(1000)}),
   z.object({ type: z.literal('smart.preview'), id: id.optional(), rule: smartRuleSchema }),
   z.object({ type: z.literal('smart.save'), id: id.optional(), name: z.string().trim().min(1).max(200), description: z.string().max(2000).default(''), rule: smartRuleSchema, revision: z.string(), coverMediaId: id.nullable().optional(),parentId:id.nullable().optional() }),
   z.object({ type: z.literal('smart.exclude'), id, mediaIds: ids }),
@@ -19,7 +23,7 @@ export const organizationCommandSchema = z.discriminatedUnion('type', [
   z.object({type:z.literal('albums.undoRemoval'),token:id}),
   z.object({ type: z.literal('albums.cover'), id }),
   z.object({ type: z.literal('albums.defaultCover'), id, rule: smartRuleSchema.optional() }),
-  z.object({ type: z.literal('albums.candidates'), id, query: z.string().max(200).default(''), rule: smartRuleSchema.optional(), ...paging }),
+  z.object({ type: z.literal('albums.candidates'), id, searchLanguage:z.enum(['zh-CN','en','ja']).optional(), query: z.string().max(200).default(''), rule: smartRuleSchema.optional(), ...paging }),
   z.object({ type: z.literal('albums.edit'), id: id.optional(), name: z.string().trim().min(1).max(200), description: z.string().max(2000).default(''), tagIds: z.array(id).max(100).default([]), coverMediaId: id.nullable().optional(),parentId:id.nullable().optional() }),
   z.object({ type: z.literal('tags.options'), id, color: z.string().regex(/^#[\da-f]{6}$/i), group: z.string().max(100), aliases: z.array(z.string().trim().min(1).max(100)).max(300), blocked: z.boolean() }),
   z.object({ type: z.literal('tags.mergePreview'), sourceId: id, targetId: id }),
@@ -29,13 +33,13 @@ export const organizationCommandSchema = z.discriminatedUnion('type', [
   z.object({type:z.literal('tags.searchPreferences')}),
   z.object({type:z.literal('tags.configureSearch'),order:z.enum(['recent','name'])}),
   z.object({ type: z.literal('tags.edit'), id, name:z.string().trim().min(1).max(100), englishName:z.string().trim().max(100).optional(), parentId:id.nullable().optional(),parentIds:z.array(id).max(100).optional() }),
-  z.object({type:z.literal('tags.moveReference'),id,fromParentId:id.nullable(),parentId:id.nullable()}),
+  z.object({type:z.literal('tags.moveReference'),id,fromParentId:id.nullable(),parentId:id.nullable(),copy:z.boolean().default(false)}),
   z.object({ type: z.literal('tags.deletePreview'), id }),
   z.object({ type: z.literal('tasks.page'), filter:z.enum(['all','pending','completed','failed']).default('all'),limit:z.number().int().min(1).max(200).default(10), offset:z.number().int().min(0).default(0) }),
   z.object({ type: z.literal('tasks.activity') }),
   z.object({ type:z.literal('tasks.historyPreview') }),
   z.object({ type:z.literal('tasks.clearHistory'),includeFailed:z.boolean().default(false),taskIds:z.array(id).max(100000).optional() }),
-  z.object({ type: z.literal('media.nameSuggestions'), query:z.string().trim().min(1).max(200), limit:z.number().int().min(1).max(8).default(8) }),
+  z.object({ type: z.literal('media.nameSuggestions'), searchLanguage:z.enum(['zh-CN','en','ja']).optional(),query:z.string().trim().min(1).max(200), limit:z.number().int().min(1).max(8).default(8) }),
   z.object({ type: z.literal('similar.list'), level:z.enum(['strict','standard','relaxed']).default('standard') }),
   z.object({ type: z.literal('similar.cleanupPreview'), level:z.enum(['strict','standard','relaxed']).default('standard'), keepLargest:z.boolean().default(true), removeIds:z.array(id).max(100000).optional() }),
   z.object({ type: z.literal('similar.validateCleanup'), allowDeleteAll:z.boolean().default(false), level:z.enum(['strict','standard','relaxed']).default('standard'), keepLargest:z.boolean().default(true), removeIds:z.array(id).max(100000).optional(), revision:z.string() }),
@@ -80,8 +84,14 @@ export const organizationCommandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('jobs.control'), id, action: z.enum(['pause', 'resume', 'cancel', 'retry']) }),
   z.object({ type: z.literal('jobs.result'), id, ...paging }),
   z.object({ type: z.literal('duplicates.list') }),
-  z.object({ type: z.literal('geo.places') }),
-  z.object({ type: z.literal('geo.media'), country: z.string().optional(), region: z.string().optional(), city: z.string().optional(), noLocation: z.boolean().default(false), ...paging }),
+  z.object({ type: z.literal('geo.places'),...coverSort }),
+  z.object({type:z.literal('geo.coverCandidates'),country:z.string(),region:z.string(),city:z.string(),...coverSort,cursor:z.object({value:z.union([z.number().finite(),z.string()]),id}).optional(),limit:z.number().int().min(1).max(48).default(24)}),
+  z.object({type:z.literal('geo.cleanupPreview')}),
+  z.object({type:z.literal('geo.cleanup'),revision:z.string()}),
+  z.object({ type: z.literal('geo.media'),...geoScope,...geoSearch,...paging }),
+  z.object({type:z.literal('geo.stats'),...geoScope,...geoSearch}),
+  z.object({type:z.literal('geo.timeline'),...geoScope,...geoSearch}),
+  z.object({type:z.literal('geo.ids'),...geoScope,...geoSearch}),
   z.object({ type: z.literal('geo.undo'), id }),
   z.object({ type: z.literal('storage.report'),refresh:z.boolean().default(false) }),
   z.object({ type: z.literal('storage.revision') }),

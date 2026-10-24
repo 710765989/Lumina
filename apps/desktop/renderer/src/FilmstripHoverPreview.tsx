@@ -1,3 +1,4 @@
+import {t} from './i18n';
 import {useEffect,useLayoutEffect,useRef,useState} from 'react';
 import {createPortal} from 'react-dom';
 import {type Media,mediaName} from './media-types';
@@ -23,11 +24,11 @@ export function FilmstripHoverPreview({media,anchor,host}:{media:Media;anchor:HT
     const ratio=size.width/Math.max(1,size.height),width=Math.min(maxWidth,maxHeight*ratio),height=width/ratio;
     setPosition({width,height,left:Math.max(bounds.left+12,Math.min(bounds.right-width-12,rect.left+rect.width/2-width/2)),top:Math.max(bounds.top+8,rect.top-height-10)});
   },[anchor,host,size]);
-  return createPortal(<div className="filmstrip-hover-preview" role="tooltip" aria-label={`放大预览 ${mediaName(media)}`} style={{left:position.left,top:position.top,width:position.width,visibility:position.width?'visible':'hidden'}}>
+  return createPortal(<div className="filmstrip-hover-preview" role="tooltip" aria-label={t("放大预览 {0}", [mediaName(media)])} style={{left:position.left,top:position.top,width:position.width,visibility:position.width?'visible':'hidden'}}>
     <div className="filmstrip-hover-image" style={{height:position.height}}>
       <img draggable={false} alt={mediaName(media)} src={window.lumina.mediaUrl(animated?'original':'thumbnail',media.id)+'?v='+encodeURIComponent(media.fingerprint??media.modifiedAtMs)} onLoad={event=>setSize({width:event.currentTarget.naturalWidth,height:event.currentTarget.naturalHeight})}/>
       {media.kind==='video'&&!failed&&<video ref={video} className={videoReady?'ready':''} src={window.lumina.mediaUrl('hover',media.id)+'?session='+session} muted autoPlay loop playsInline preload="auto" tabIndex={-1} onLoadedData={event=>{setVideoReady(true);void event.currentTarget.play().catch(()=>{});}} onError={()=>setFailed(true)}/>}
-      {media.kind==='video'&&!videoReady&&<span className="filmstrip-hover-status">{failed?'视频预览暂不可用':'正在准备短片预览…'}</span>}
+      {media.kind==='video'&&!videoReady&&<span className="filmstrip-hover-status">{failed?t("视频预览暂不可用"):t("正在准备短片预览…")}</span>}
     </div>
   </div>,host);
 }

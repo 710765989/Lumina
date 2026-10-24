@@ -1,3 +1,4 @@
+import {t} from './i18n';
 import { useEffect, useLayoutEffect,useMemo, useRef, useState, type MouseEvent } from 'react';
 import {refreshAnimatedPreviewLayout} from './animated-previews';
 import {bytesText} from './media-types';
@@ -91,7 +92,7 @@ export function VirtualMediaGrid({ items, thumbnails, selected, onSelectMany,onT
           className={selected.has(item.id) ? 'media-card selected' : 'media-card'}
           key={item.id}
           data-media-id={item.id}
-          title={`${fileName(item.absolutePath)}\n文件大小：${bytesText(item.sizeBytes)}`}
+          title={t("{0}\n文件大小：{1}", [fileName(item.absolutePath), bytesText(item.sizeBytes)])}
           draggable onDragStart={event=>drag.start(event,item.id)} onClickCapture={drag.click}
           onClick={(event) => onToggle(item.id, event)}
           onDoubleClick={() => onOpen(item)}

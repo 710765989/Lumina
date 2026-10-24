@@ -1,3 +1,4 @@
+import {nativeText,saveNativeLanguage,nativeLanguage} from './ui-language.js';
 import {ThumbnailMemory} from './thumbnail-memory.js';
 const thumbnailMemory=new ThumbnailMemory();
 import {PreviewRequests} from './preview-requests.js';
@@ -48,7 +49,7 @@ function startCoreHost(): void {
   writeLog(`start core packaged=${packaged} command=${command} args=${JSON.stringify(args)}`);
   core = spawn(command, args, {
     cwd: packaged ? path.dirname(process.execPath) : workspace,
-    env: { ...process.env,LUMINA_DEFAULT_CACHE_DIR:process.env.LUMINA_TEST_USER_DATA?path.join(process.env.LUMINA_TEST_USER_DATA,'media-cache'):path.join(packaged?path.dirname(process.execPath):app.getAppPath(),'cache','media'),LUMINA_IMPORT_INBOX:path.join(app.getPath('userData'),'import-inbox'), ...(packaged ? { ELECTRON_RUN_AS_NODE: '1', LUMINA_FFMPEG_PATH: path.join(app.getAppPath().replace(/app\.asar$/u, 'app.asar.unpacked'), 'node_modules', 'ffmpeg-static', process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg') } : {}), LUMINA_DB_PATH: path.join(app.getPath('userData'), 'data', 'lumina.db') },
+    env: { ...process.env,LUMINA_JAPANESE_WORKER:path.join(app.getAppPath().replace(/app\.asar$/u,'app.asar.unpacked'),'dist','japanese-worker.cjs'),LUMINA_DEFAULT_CACHE_DIR:process.env.LUMINA_TEST_USER_DATA?path.join(process.env.LUMINA_TEST_USER_DATA,'media-cache'):path.join(packaged?path.dirname(process.execPath):app.getAppPath(),'cache','media'),LUMINA_IMPORT_INBOX:path.join(app.getPath('userData'),'import-inbox'), ...(packaged ? { ELECTRON_RUN_AS_NODE: '1', LUMINA_FFMPEG_PATH: path.join(app.getAppPath().replace(/app\.asar$/u, 'app.asar.unpacked'), 'node_modules', 'ffmpeg-static', process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg') } : {}), LUMINA_DB_PATH: path.join(app.getPath('userData'), 'data', 'lumina.db') },
     windowsHide: true,
   });
   core.stderr.on('data', (chunk) => writeLog(`core stderr: ${String(chunk).trim()}`));
@@ -217,7 +218,7 @@ app.whenReady().then(() => {
   writeLog('app ready');
   mkdirSync(path.join(app.getPath('userData'), 'data'), { recursive: true });
   registerMediaProtocol();
-  ipcMain.handle('lumina:command', (_event, command: unknown) => { writeLog(`ipc command ${JSON.stringify(command)}`); return sendCommand(command); });
+  ipcMain.handle('lumina:command', (_event, command: unknown) => { writeLog(`ipc command ${JSON.stringify(command)}`); const value=command as any;const language=nativeLanguage();const searchable=['media.search','media.timeline','media.filteredStats','media.nameSuggestions','albums.media','albums.filteredStats','albums.candidates','tags.media','tags.filteredStats','geo.media','geo.stats','geo.timeline','geo.ids'];if(searchable.includes(value?.type))return sendCommand({...value,searchLanguage:language});if(value?.type==='media.playlist')return sendCommand({...value,source:{...value.source,searchLanguage:language}});return sendCommand(command); });
   ipcMain.handle('lumina:memory-pressure',event=>{if(event.sender!==mainWindow?.webContents)return 0;const pid=event.sender.getOSProcessId();return (app.getAppMetrics().find(row=>row.pid===pid)?.memory.workingSetSize??0)*1024;});
   ipcMain.handle('lumina:thumbnail', async (_event, input: string|{mediaId:string;retry?:boolean}) => {
     const mediaId=typeof input==='string'?input:input.mediaId,retry=typeof input==='string'?false:input.retry===true;
@@ -230,7 +231,7 @@ app.whenReady().then(() => {
   });
   ipcMain.handle('lumina:pick-import',async(_event,kind:unknown)=>{
     if(kind!=='files'&&kind!=='folders')throw new Error('无效的导入方式');
-    const result=await dialog.showOpenDialog({title:kind==='files'?'选择导入的照片或视频':'批量选择导入文件夹',properties:kind==='files'?['openFile','multiSelections']:['openDirectory','multiSelections']});
+    const result=await dialog.showOpenDialog({title:kind==='files'?nativeText('选择导入的照片或视频'):nativeText('批量选择导入文件夹'),properties:kind==='files'?['openFile','multiSelections']:['openDirectory','multiSelections']});
     return result.canceled?[]:result.filePaths;
   });
   ipcMain.handle('lumina:clipboard-import',async()=>{
@@ -239,8 +240,10 @@ app.whenReady().then(() => {
     const bytes=image.toPNG();if(bytes.length>32*1024*1024)throw new Error('剪贴板图片超过32MB，请保存为文件后导入');
     const inbox=path.join(app.getPath('userData'),'import-inbox');mkdirSync(inbox,{recursive:true});const file=path.join(inbox,`lumina-clipboard-${randomUUID()}.png`);await writeFile(file,bytes,{flag:'wx'});return [file];
   });
-  ipcMain.handle('lumina:native', async (_event, input: { action?: string; mediaIds?: unknown; directory?: unknown; displayId?:unknown; dimmed?:unknown; color?:unknown }) => {
+  ipcMain.handle('lumina:native', async (_event, input: { action?: string; mediaIds?: unknown; directory?: unknown; displayId?:unknown; dimmed?:unknown; color?:unknown; language?:unknown }) => {
     const owner=BrowserWindow.fromWebContents(_event.sender);
+    if(input.action==='get-language')return {language:nativeLanguage()};
+    if(input.action==='set-language'){saveNativeLanguage(input.language);return {ok:true};}
     if(input.action==='dim-window-controls'){if(typeof input.dimmed!=='boolean')throw new Error('无效的窗口状态');if(owner){if(input.dimmed)viewerWindows.add(owner.id);else viewerWindows.delete(owner.id);}return {ok:true};}
     if(input.action==='window-controls-style'){
       if(typeof input.color!=='string' || !/^#[0-9a-f]{6}$/iu.test(input.color))throw new Error('无效的窗口颜色');
@@ -260,7 +263,7 @@ app.whenReady().then(() => {
       if(owner){const original=displayOrigins.get(owner.id);if(original){displayOrigins.delete(owner.id);owner.setBounds(original.bounds);if(original.maximized)owner.maximize();}}return {ok:true};
     }
     if(input.action==='pick-music') {
-      const result=await dialog.showOpenDialog({properties:['openFile'],filters:[{name:'背景音乐',extensions:['mp3','wav','ogg','m4a','flac']}]});if(result.canceled || !result.filePaths[0])return null;
+      const result=await dialog.showOpenDialog({properties:['openFile'],filters:[{name:nativeText('背景音乐'),extensions:['mp3','wav','ogg','m4a','flac']}]});if(result.canceled || !result.filePaths[0])return null;
       const file=result.filePaths[0];if((await stat(file)).size>64*1024*1024)throw new Error('请选择 64 MB 以内的背景音乐');
       const mime=({'.mp3':'audio/mpeg','.wav':'audio/wav','.ogg':'audio/ogg','.m4a':'audio/mp4','.flac':'audio/flac'} as Record<string,string>)[path.extname(file).toLowerCase()];if(!mime)throw new Error('不支持的音乐格式');
       const bytes=await readFile(file);await writeFile(path.join(app.getPath('userData'),'slideshow-music.json'),JSON.stringify({file}));
@@ -274,7 +277,7 @@ app.whenReady().then(() => {
     }
     if(input.action==='forget-music'){await unlink(path.join(app.getPath('userData'),'slideshow-music.json')).catch(()=>{});return {ok:true};}
     if (input.action === 'pick-subtitle') {
-      const result = await dialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: '字幕', extensions: ['vtt','srt'] }] });
+      const result = await dialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: nativeText('字幕'), extensions: ['vtt','srt'] }] });
       if (result.canceled || !result.filePaths[0]) return null;
       const file=result.filePaths[0];if((await stat(file)).size>8*1024*1024)throw new Error('字幕文件过大，请选择 8 MB 以内的文本字幕');
       const bytes=await readFile(file);let text=bytes.toString('utf8').replace(/^\uFEFF/u,'');if(text.includes('\uFFFD'))text=new TextDecoder('gb18030').decode(bytes);

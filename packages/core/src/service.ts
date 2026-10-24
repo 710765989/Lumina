@@ -1,3 +1,4 @@
+import {JapaneseReadings} from './japanese-readings.js';
 import {hiddenReasons,tagHiddenSql} from '@lumina/storage';
 import {rememberCache,forgetCache} from './cache-inventory.js';
 import {CacheLocation,configuredCacheRoot} from './cache-location.js';
@@ -64,6 +65,7 @@ import path from 'node:path';
 
 export class LibraryService {
   readonly organization: OrganizationService;
+  private japanese=new JapaneseReadings();
   readonly watcher: RootWatcher;readonly directories:DirectoryImports;readonly imports:MediaImports;readonly cacheLocation:CacheLocation;private cacheOperations=0;
   private notify: () => void;
   private windowsAttributes=new WindowsHiddenAttributes();private windowsTimer?:ReturnType<typeof setTimeout>;private windowsJob?:string;private closed=false;
@@ -118,7 +120,7 @@ export class LibraryService {
 
   }
   start() { this.cacheLocation.recover();this.watcher.start();this.organization.cacheCleanup.start();void this.organization.recycle.recover().then(this.notify); }
-  close() { this.closed=true;clearTimeout(this.windowsTimer);this.organization.jobs.suspendWindowsSync();this.windowsAttributes.close();this.cacheLocation.close();this.imports.close();this.watcher.close();this.organization.compatibility.close();this.organization.hoverVideo.close();this.organization.cacheCleanup.close();this.organization.storage.close(); }
+  close() { this.japanese.close();this.closed=true;clearTimeout(this.windowsTimer);this.organization.jobs.suspendWindowsSync();this.windowsAttributes.close();this.cacheLocation.close();this.imports.close();this.watcher.close();this.organization.compatibility.close();this.organization.hoverVideo.close();this.organization.cacheCleanup.close();this.organization.storage.close(); }
   private thumbnailMedia(id: string) {
     const record = rawMedia(this.db, id); if (!record) throw new Error(`Media not found: ${id}`);
     return { ...record, kind: record.kind as 'photo' | 'video', absolutePath: this.organization.filePath(id) };
@@ -163,6 +165,15 @@ export class LibraryService {
 
   async handle(input:unknown):Promise<unknown>{
     const kind=(input as any)?.type;
+    if(kind==='text.japaneseReadings'){const command=organizationCommandSchema.parse(input);if(command.type==='text.japaneseReadings')return this.japanese.read(command.texts);}
+    const search=(kind==='media.playlist'?(input as any).source:input) as any;
+    if(search?.searchLanguage==='ja' && (search.query?.trim() || search.fileNames?.length || search.excludeFileNames?.length)){
+      // Read names from the index, never from media files. The worker coalesces
+      // requests and reuses previously computed readings across all search scopes.
+      const texts=(this.db.prepare("SELECT name AS text FROM tags UNION SELECT english_name AS text FROM tags WHERE english_name<>'' UNION SELECT value AS text FROM tag_options,json_each(aliases_json)").all() as {text:string}[]).map(row=>row.text);
+      if(search.query || search.fileNames?.length || search.excludeFileNames?.length)texts.push(...(this.db.prepare("SELECT DISTINCT COALESCE(NULLIF(file_name,''),absolute_path) AS text FROM media").all() as {text:string}[]).map(row=>row.text));
+      await this.japanese.read(texts);
+    }
     const cacheAccess=['media.thumbnail','media.previewPath','media.compatibilityPath','media.hoverPreview','tasks.retryThumbnail','tasks.retryThumbnails','storage.report','storage.cachePreview','storage.clearCache'].includes(kind) || kind==='jobs.control' && ['resume','retry'].includes((input as any)?.action) && Boolean(this.db.prepare("SELECT 1 FROM tasks WHERE id=? AND kind IN('cache-cleanup','thumbnail','video-preview')").get((input as any).id));
     if(!cacheAccess)return this.dispatch(input);
     await this.cacheLocation.wait();this.cacheOperations++;try{const result=await this.dispatch(input);if(result&&typeof result==='object'&&'cachePath' in result&&typeof result.cachePath==='string'&&this.thumbnailCacheRoot)await rememberCache(this.db,this.thumbnailCacheRoot,result.cachePath);return result;}finally{this.cacheOperations--;}
@@ -328,7 +339,7 @@ export class LibraryService {
       })();
       case 'tags.rename': renameTag(this.db, command.id, command.name); return { ok: true };
       case 'tags.delete': {
-        if(command.mode==='reference'){if(!command.parentId)throw new Error('请选择要删除的父标签引用');removeTagReference(this.db,command.id,command.parentId);reconcileAllCovers(this.db);}else deleteTag(this.db,command.id,command.deleteChildren);
+        if(command.mode==='reference'){if(command.parentId===undefined)throw new Error('请选择要删除的父标签引用');removeTagReference(this.db,command.id,command.parentId);reconcileAllCovers(this.db);}else deleteTag(this.db,command.id,command.deleteChildren);
         refreshMediaStats(this.db);this.notify();return {ok:true};
       }
       case 'tags.media': return listTagMedia(this.db, command.id, command);

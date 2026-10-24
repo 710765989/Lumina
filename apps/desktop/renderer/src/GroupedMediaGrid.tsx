@@ -1,3 +1,4 @@
+import {t,formatMonth} from './i18n';
 import { useEffect, useMemo, type MouseEvent } from 'react';
 import { MediaThumbnail } from './MediaThumbnail';
 import { mediaAnimationProps } from './media-animation';
@@ -35,7 +36,7 @@ export function GroupedMediaGrid({ items, thumbnails, selected, onToggle, onOpen
 
   return <div className="grouped-media-scroll">
     {groups.map((group) => <section className="media-month-group" key={group.label}>
-      <div className="media-month-heading"><h3>{group.label}</h3><span>{group.items.length} 项</span></div>
+      <div className="media-month-heading"><h3>{formatMonth(group.label)}</h3><span>{group.items.length}{t("项")}</span></div>
       <div className="media-grid">
         {group.items.map((item) => <article
           className={selected.has(item.id) ? 'media-card selected' : 'media-card'}
@@ -47,7 +48,7 @@ export function GroupedMediaGrid({ items, thumbnails, selected, onToggle, onOpen
           <div className="media-placeholder">
             <MediaThumbnail id={item.id} kind={item.kind} source={thumbnails[item.id]} {...mediaAnimationProps(item)} />
           </div>
-          <div className="media-meta"><strong>{fileName(item.absolutePath)}</strong><small>{item.kind === 'video' ? '视频' : '照片'}</small></div>
+          <div className="media-meta"><strong>{fileName(item.absolutePath)}</strong><small>{item.kind === 'video' ? t("视频") : t("照片")}</small></div>
         </article>)}
       </div>
     </section>)}

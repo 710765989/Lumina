@@ -5,5 +5,6 @@ import './styles.css';
 import './styles-m1.css';
 import './styles-m2.css';
 import './styles-interactions.css';
+import {initializeLanguage} from './i18n';
 
-createRoot(document.getElementById('root')!).render(<StrictMode><App /></StrictMode>);
+void initializeLanguage().then(()=>createRoot(document.getElementById('root')!).render(<StrictMode><App /></StrictMode>));

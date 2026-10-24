@@ -16,7 +16,7 @@ export function useStartup(dataReady:boolean,error:string){
    const cards=bounds?Array.from(viewport!.querySelectorAll<HTMLElement>('[data-media-id]')).filter(card=>{const rect=card.getBoundingClientRect();return rect.bottom>bounds.top&&rect.top<bounds.bottom&&rect.right>bounds.left&&rect.left<bounds.right;}):[];
    const began=performance.now();let previous=-1;
    while(!stopped){
-    const completed=cards.filter(card=>{const image=card.querySelector<HTMLImageElement>('.media-placeholder>img:not(.thumbnail-animated-photo)');return image?image.complete&&image.naturalWidth>0:Boolean(card.querySelector('.thumbnail-fallback')?.textContent?.includes('失败'));}).length;
+    const completed=cards.filter(card=>{const image=card.querySelector<HTMLImageElement>('.media-placeholder>img:not(.thumbnail-animated-photo)');return image?image.complete&&image.naturalWidth>0:Boolean(card.querySelector('.thumbnail-fallback'));}).length;
     if(completed!==previous){previous=completed;window.lumina.startup({phase:'thumbnails',completed,total:cards.length});}
     if(completed===cards.length||performance.now()-began>=8000){finished.current=true;document.documentElement.dataset.startup='ready';window.lumina.startup({phase:'ready',completed,total:cards.length});return;}
     await new Promise(resolve=>setTimeout(resolve,60));

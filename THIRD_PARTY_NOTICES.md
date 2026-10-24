@@ -15,3 +15,7 @@ Lumina 使用以下主要组件。项目源码许可证与第三方许可证分�
 GeoNames 数据经过字段精简及离线 JSON 转换，来源和修改方式在随附说明中记录。城市匹配为附近城市估计，不作为行政边界判定。
 
 运行包保留 Electron 的许可文件，并在 `resources/third-party/` 随附本次构建的运行依赖许可证、FFmpeg 版本/构建信息和上游地址。自行构建发行版时，也应保留所采用二进制及依赖的许可说明。
+
+## 日语读音
+
+Kuromoji 0.1.2（Apache-2.0，https://github.com/takuyaa/kuromoji.js）使用 mecab-ipadic-2.7.0-20070801 词典。发行包 dist/japanese-dict 随附 LICENSE-2.0.txt、完整 NOTICE.md（NAIST / ICOT 条款）及 async、doublearray、lodash、zlibjs 的 MIT 许可证。词典仅用于离线读音，不提供翻译。

@@ -1,3 +1,4 @@
+import {t} from './i18n';
 import {cacheMoveProgress} from './cache-move-progress';
 import {ActionButton} from './ActionControls';
 import {useEffect,useRef,useState} from 'react';
@@ -16,13 +17,13 @@ export function BackgroundTaskNotice({onOpen}:{onOpen:(id:string)=>void}){
     let disposed=false,running=false;
     const publish=(value:Notice)=>{if(!disposed)setNotice((current)=>current?.id===value.id && current.text===value.text && current.status===value.status?current:value);};
     const poll=async()=>{if(running || !tasks.current.size)return;running=true;try{for(const task of [...tasks.current.values()]){
-      try{const job=await window.lumina.command({type:'jobs.result',id:task.id,limit:1});if(disposed)return;const label=labels[task.kind]??'任务';
+      try{const job=await window.lumina.command({type:'jobs.result',id:task.id,limit:1});if(disposed)return;const label=t(labels[task.kind]??"任务");
         if(!job.active && ['completed','failed','cancelled'].includes(job.status)){
           tasks.current.delete(task.id);if(task.kind==='cache-cleanup')window.dispatchEvent(new CustomEvent('lumina-cache-cleared'));
-          publish({id:task.id,status:job.status==='completed'?'success':job.status==='failed'?'error':'cancelled',text:job.status==='completed'?`${label}成功 · ${job.counts?.completed??job.processed} 项`:job.status==='failed'?`${label}完成 · ${job.counts?.completed??0} 项成功，${job.counts?.failed??0} 项失败`:`${label}已取消 · 已处理 ${job.processed}/${job.total} 项`});
+          publish({id:task.id,status:job.status==='completed'?'success':job.status==='failed'?'error':'cancelled',text:job.status==='completed'?t("{0}成功 · {1} 项", [label, job.counts?.completed??job.processed]):job.status==='failed'?t("{0}完成 · {1} 项成功，{2} 项失败", [label, job.counts?.completed??0, job.counts?.failed??0]):t("{0}已取消 · 已处理 {1}/{2} 项", [label, job.processed, job.total])});
         }else if(Date.now()-task.began>=250){
-          const state=job.status==='paused'?'已暂停':job.status==='queued'?'已加入处理队列':'正在后台处理';
-          publish({id:task.id,status:job.status==='paused'?'paused':'running',text:task.kind==='cache-move'?`${cacheMoveProgress(job).text}${!job.committed?' · 新预览暂时等待':''}`:`${label}${state} · ${job.processed}/${job.total} 项 · ${Math.round(job.processed/Math.max(1,job.total)*100)}%`});
+          const state=job.status==='paused'?t("已暂停"):job.status==='queued'?t("已加入处理队列"):t("正在后台处理");
+          publish({id:task.id,status:job.status==='paused'?'paused':'running',text:task.kind==='cache-move'?`${cacheMoveProgress(job).text}${!job.committed?t(" · 新预览暂时等待"):''}`:t("{0}{1} · {2}/{3} 项 · {4}%", [label, state, job.processed, job.total, Math.round(job.processed/Math.max(1,job.total)*100)])});
         }
       }catch{ /* The persisted task remains available in task status; retry polling. */ }
     }}finally{running=false;}};
@@ -32,5 +33,5 @@ export function BackgroundTaskNotice({onOpen}:{onOpen:(id:string)=>void}){
   },[]);
   useEffect(()=>{if(!notice || notice.status==='running' || notice.status==='paused')return;const timer=window.setTimeout(()=>setNotice((current)=>current===notice?null:current),notice.status==='error'?8000:4000);return()=>window.clearTimeout(timer);},[notice]);
   if(!notice)return null;
-  return <div className={`background-task-notice task-${notice.status}`} role="status" aria-live="polite"><span>{notice.text}</span><ActionButton className="ghost" onClick={()=>onOpen(notice.id)}>查看进度</ActionButton><ActionButton className="task-notice-close" aria-label="关闭任务提示" onClick={()=>setNotice(null)}>×</ActionButton></div>;
+  return <div className={`background-task-notice task-${notice.status}`} role="status" aria-live="polite"><span>{notice.text}</span><ActionButton className="ghost" onClick={()=>onOpen(notice.id)}>{t("查看进度")}</ActionButton><ActionButton className="task-notice-close" aria-label={t("关闭任务提示")} onClick={()=>setNotice(null)}>×</ActionButton></div>;
 }
